@@ -1,0 +1,43 @@
+{
+  "name": "npm-download-tracker",
+  "version": "0.0.1",
+  "description": "Package tarball data store manager for the npm-two-stage project",
+  "license": "Artistic-2.0",
+  "author": {
+    "name": "Matthew Rafferty",
+    "email": "mmraff@gmail.com"
+  },
+  "homepage": "https://github.com/mmraff/npm-download-tracker#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mmraff/npm-download-tracker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mmraff/npm-download-tracker/issues"
+  },
+  "main": "dltracker.js",
+  "files": [],
+  "dependencies": {
+    "graceful-fs": "^4.2.3",
+    "npm-package-filename": "^1.0.0",
+    "npmlog": "^4.1",
+    "semver": "^5.7"
+  },
+  "devDependencies": {
+    "chai": "^4.3.4",
+    "mkdirp": "~0.5.1",
+    "mocha": "^7.2.0",
+    "rimraf": "^2.6.3",
+    "tar": "^4.4.13"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "keywords": [
+    "npm",
+    "npm-two-stage",
+    "download",
+    "offline",
+    "tarball"
+  ]
+}
