@@ -1,4 +1,4 @@
-# npm-download-tracker
+# npm-package-dl-tracker
 Package tarball data store manager for the **npm-two-stage** project
 
 ## Overview
@@ -14,18 +14,18 @@ Where package tarball filenames (and Git repo identifiers) are of concern, this 
 ## Install
 
 ```bash
-npm install npm-download-tracker
+npm install npm-package-dl-tracker
 ````
 
 
 ## Usage
 
 ```js
-const ndt = require('npm-download-tracker')
+const trackerMaker = require('npm-package-dl-tracker')
 
 // ...
 
-ndt.create('path/to/put/tarballs', function(err, tracker) {
+trackerMaker.create('path/to/put/tarballs', function(err, tracker) {
   if (err) return fallback(err)
   proceedWithTracker(tracker)
 })
@@ -63,21 +63,21 @@ tracker.serialize(function(err) {
 
 ## Module API
 
-### `ndt.typeMap`
-A hash of `npm-package-arg` package types to `npm-download-tracker` package types.
+### `trackerMaker.typeMap`
+A hash of `npm-package-arg` package types to `npm-package-dl-tracker` package types.
 ```js
-ndt.typeMap['version'] // --> 'semver'
-ndt.typeMap['tag']     // --> 'tag'
-ndt.typeMap['git']     // --> 'git'
-ndt.typeMap['remote']  // --> 'url'
-ndt.typeMap['file']    // --> undefined
+trackerMaker.typeMap['version'] // --> 'semver'
+trackerMaker.typeMap['tag']     // --> 'tag'
+trackerMaker.typeMap['git']     // --> 'git'
+trackerMaker.typeMap['remote']  // --> 'url'
+trackerMaker.typeMap['file']    // --> undefined
 ```
 
 A value obtained from this mapping is to be used as the first argument to instance methods `add()`, `contains()`, and `get()`.
 
 Only covers the ones that are meaningful in this context.
 
-### `ndt.create(where, cb)`
+### `trackerMaker.create(where, cb)`
 Factory function to instantiate a tracker instance.
 * `where` {string || `undefined` || `null`} Path to put/find tarballs
 
@@ -93,7 +93,7 @@ Factory function to instantiate a tracker instance.
 {string} The absolute path adopted by this instance for location of tarballs
 
 ### `tracker.add(type, data, cb)`
-* `type` {string} One of the values from **`ndt.typeMap`** (see above)
+* `type` {string} One of the values from **`trackerMaker.typeMap`** (see above)
 * `data` {object} Contains fields to associate with a given tarball.
   Arbitrary extra fields may be included with required fields.
 
@@ -119,7 +119,7 @@ Factory function to instantiate a tracker instance.
 
 ### `tracker.contains(type, name, spec)`
 *Synchronous*
-* `type` {string} One of the values from **`ndt.typeMap`** (see above)
+* `type` {string} One of the values from **`trackerMaker.typeMap`** (see above)
 * `name` {string}
 
   For `type` `'semver'` or `'tag'`, must be the package name

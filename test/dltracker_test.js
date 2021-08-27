@@ -8,7 +8,7 @@ const mkdirp = require('mkdirp')
 const rimraf = require('rimraf')
 const tar = require('tar')
 
-const DlTracker = require('../')
+const maker = require('../')
 
 function makeCleanDir(dirPath, next, finish) {
   rimraf(dirPath, function(rmrfErr) {
@@ -71,13 +71,13 @@ describe('DownloadTracker module', function() {
   })
 
   it('should export a function: create', function() {
-    expect(DlTracker.create).to.be.a('function')
+    expect(maker.create).to.be.a('function')
   })
   it('should export an object property: typeMap', function() {
-    expect(DlTracker.typeMap).to.be.an('object')
+    expect(maker.typeMap).to.be.an('object')
   })
   it('the typeMap object should be non-empty', function() {
-    expect(DlTracker.typeMap).to.not.be.empty
+    expect(maker.typeMap).to.not.be.empty
   })
 
   var emptyArgs   = [ undefined, null, '' ]
@@ -91,35 +91,35 @@ describe('DownloadTracker module', function() {
 
   describe('create() misuse', function() {
     it('should throw an error when given no arguments', function() {
-      expect(function() { DlTracker.create() }).to.throw(SyntaxError)
+      expect(function() { maker.create() }).to.throw(SyntaxError)
     })
 
     it('should throw an error when given no callback', function() {
-      expect(function() { DlTracker.create('') }).to.throw(SyntaxError)
+      expect(function() { maker.create('') }).to.throw(SyntaxError)
     })
 
     it('should throw an error when given wrong type for callback', function() {
       for (let i = 0; i < notFunctions.length; ++i) {
         expect(function() {
-          DlTracker.create('', notFunctions[i])
+          maker.create('', notFunctions[i])
         }).to.throw(TypeError)
       }
     })
 
     it('should throw an error when only given a callback', function() {
-      expect(function() { DlTracker.create(dummyFunc) }).to.throw(TypeError)
+      expect(function() { maker.create(dummyFunc) }).to.throw(TypeError)
     })
 
     it('should throw when given wrong type for path', function() {
       for (i = 0; i < notStringArgs.length; ++i) {
         expect(function() {
-          DlTracker.create(notStringArgs[i], dummyFunc)
+          maker.create(notStringArgs[i], dummyFunc)
         }).to.throw(TypeError)
       }
     })
 
     it('should pass back an error for non-existent path', function(done) {
-      DlTracker.create('test/assets/NOT_THERE', function(err, tracker) {
+      maker.create('test/assets/NOT_THERE', function(err, tracker) {
         expect(tracker).to.be.undefined
         expect(err).to.be.an('error')
         done()
@@ -129,7 +129,7 @@ describe('DownloadTracker module', function() {
     it('should throw when given wrong type for opts', function(done) {
       for (i = 0; i < notSimpleObjects.length; ++i) {
         expect(function() {
-          DlTracker.create('', notSimpleObjects[i], dummyFunc)
+          maker.create('', notSimpleObjects[i], dummyFunc)
         }).to.throw(TypeError)
       }
       done()
@@ -139,7 +139,7 @@ describe('DownloadTracker module', function() {
   describe('create() correct use', function() {
 
     it('should provide a non-empty object', function(done) {
-      DlTracker.create(tempDir1, function(err, tracker) {
+      maker.create(tempDir1, function(err, tracker) {
         if (err) return done(err)
         expect(tracker).to.be.an('object').that.is.not.empty
         currentTracker = tracker
@@ -185,7 +185,7 @@ describe('DownloadTracker module', function() {
             process.chdir(startingDir)
             return done()
           }
-          DlTracker.create(emptyArgs[i], function(err, tracker) {
+          maker.create(emptyArgs[i], function(err, tracker) {
             if (err) return done(err)
             expect(tracker.path).to.equal(process.cwd())
             ++i
@@ -337,11 +337,11 @@ describe('DownloadTracker module', function() {
 
     describe('add()', function() {
       before('create a tracker instance for add() tests', function(done) {
-        // We wait until the DlTracker instance is created before we copy the
+        // We wait until the maker instance is created before we copy the
         // tarballs into the governed directory, so that the automatic iteration
         // of directory contents that happens in create() gets no results
         // (this time).
-        DlTracker.create(tempDir1, function(err, tracker) {
+        maker.create(tempDir1, function(err, tracker) {
           if (err) return done(err)
           currentTracker = tracker
           // Iteratively copy all the tarballs into the governed directory
@@ -774,7 +774,7 @@ describe('DownloadTracker module', function() {
 
     describe('For a new instance on a directory that has tarballs and a JSON file,', function() {
       before('create a tracker instance for data recovery tests', function(done) {
-        DlTracker.create(tempDir1, function(createErr, tracker) {
+        maker.create(tempDir1, function(createErr, tracker) {
           currentTracker = tracker
           done(createErr)
         })
@@ -879,7 +879,7 @@ describe('DownloadTracker module', function() {
           // Iteratively copy all the tarballs into the governed directory
           mockAllDownloads(0, tempDir2, function(err) {
             if (err) return done(err)
-            DlTracker.create(tempDir2, function(createErr, tracker) {
+            maker.create(tempDir2, function(createErr, tracker) {
               if (createErr) return done(createErr)
               currentTracker = tracker
               done()

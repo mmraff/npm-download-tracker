@@ -1,5 +1,5 @@
 {
-  "name": "npm-download-tracker",
+  "name": "npm-package-dl-tracker",
   "version": "1.0.0",
   "description": "Package tarball data store manager for the npm-two-stage project",
   "license": "Artistic-2.0",
