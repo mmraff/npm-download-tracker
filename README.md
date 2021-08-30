@@ -47,7 +47,7 @@ tracker.contains('semver', pkgName, pkgVer) // --> true
 
 // ...
 
-const outData = tracker.get('semver', pkgName, pkgVer)
+const outData = tracker.getData('semver', pkgName, pkgVer)
 /* -->
   outData contains everything in inData, with the additional field 'type'
 */
