@@ -57,19 +57,6 @@ describe('DownloadTracker module', function() {
     )
   })
 
-  after('remove temporary directories', function(done) {
-    rimraf(srcDir, function(rmrfErr1) {
-      if (rmrfErr1) console.warn(rmrfErr1)
-      rimraf(tempDir1, function(rmrfErr2) {
-        if (rmrfErr2) console.warn(rmrfErr2)
-        rimraf(tempDir2, function(rmrfErr3) {
-          if (rmrfErr3) console.warn(rmrfErr3)
-          done()
-        })
-      })
-    })
-  })
-
   it('should export a function: create', function() {
     expect(maker.create).to.be.a('function')
   })
@@ -766,6 +753,7 @@ describe('DownloadTracker module', function() {
         fs.stat(path.join(tempDir1, 'dltracker.json'), function(err, stats) {
           if (!err && !stats.isFile())
             err = new Error('dltracker.json is not a regular file')
+          expect(err).to.not.be.an('error')
           done(err)
         })
       })
