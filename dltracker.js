@@ -593,6 +593,7 @@ function create(where, opts, cb)
               data = versions[data.commit]
             }
             result = { repo: name, commit: ver }
+            if (spec && ver != spec) result.spec = spec
           }
         }
         if (data) {
