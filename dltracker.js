@@ -297,7 +297,7 @@ function create(where, opts, cb)
       // Recognize anything that looks like a package file in the
       // given directory, and table it
       fs.readdir(pkgDir, function(err, files) {
-        if (err) return done(err)
+        if (err) return cb(err)
 
         iterateAndAdd(files, tables)
         cb(null, publicSelf)
@@ -357,7 +357,7 @@ function create(where, opts, cb)
         for (let tag in tags) {
           const data = tags[tag]
           if ('version' in data) {
-            if (!tables.semver[n][data.version]) {
+            if (!tables.semver[n] || !tables.semver[n][data.version]) {
               err = new Error("Orphaned npm registry tag reference")
               err.code = 'EORPHANREF'
             }
@@ -377,6 +377,7 @@ function create(where, opts, cb)
     }
 
     function nextCommit(done) {
+      let err
       if (verKeyIndex < versionKeys.length) {
         const repo = pkgKeys[pkgKeyIndex]
         const commit = versionKeys[verKeyIndex]
@@ -384,13 +385,19 @@ function create(where, opts, cb)
         if ('commit' in data) {
           // This is a ref record. Verify the reference:
           if (!versions[data.commit]) {
-            const err = new Error("Orphaned git commit reference")
+            err = new Error("Orphaned git commit reference")
             err.code = 'EORPHANREF'
-            errors.push({
-              data: preparedData('git', repo, commit),
-              error: err
-            })
           }
+        }
+        else if (!Object.keys(data).length) {
+          err = new Error('No data in git record')
+          err.code = 'ENODATA'
+        }
+        if (err) {
+          errors.push({
+            data: preparedData('git', repo, commit),
+            error: err
+          })
           ++verKeyIndex
           return nextCommit(done)
         }
@@ -588,12 +595,13 @@ function create(where, opts, cb)
             data = versions['master'] || versions['main']
           }
           if (data) {
+            result = { repo: name }
             if (data.commit) {
-              ver = data.commit
+              result.commit = data.commit
               data = versions[data.commit]
+              if (spec) result.spec = spec
             }
-            result = { repo: name, commit: ver }
-            if (spec && ver != spec) result.spec = spec
+            else result.commit = spec
           }
         }
         if (data) {
@@ -628,10 +636,12 @@ function create(where, opts, cb)
         if (versions) data = versions[spec]
         if (data) {
           ver = data.version
-          versions = tables.semver[name]
-          data = versions[ver]
           result = { name: name, spec: spec, version: ver }
-          for (prop in data) result[prop] = data[prop]
+          versions = tables.semver[name]
+          if (versions) {
+            data = versions[ver]
+            for (prop in data) result[prop] = data[prop]
+          }
         }
         break
       case 'url':
