@@ -1,6 +1,6 @@
 {
   "name": "npm-package-dl-tracker",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Package tarball data store manager for the npm-two-stage project",
   "license": "Artistic-2.0",
   "author": {
@@ -16,7 +16,9 @@
     "url": "https://github.com/mmraff/npm-download-tracker/issues"
   },
   "main": "dltracker.js",
-  "files": [],
+  "files": [
+    "reconstruct-map.js"
+  ],
   "dependencies": {
     "graceful-fs": "^4.2.3",
     "npm-package-filename": "^1.0.0",

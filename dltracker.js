@@ -8,6 +8,8 @@ const semver = require('semver')
 const log = require('npmlog')
 const npf = require('npm-package-filename')
 
+const reconstructMap = require('./reconstruct-map')
+
 const NPA_TO_DLT_TYPE_MAP = { // for external use
   version: 'semver',
   range: 'semver',
@@ -207,45 +209,6 @@ function create(where, opts, cb)
   const tables = { semver: {}, tag: {}, url: {}, git: {} }
   const oldInfo = {}
 
-  // Helper for initialization: used on a list of items for which
-  // there is no mapping in the dltracker.json file
-  function iterateAndAdd(itemList) {
-    let name, version, table
-    for (let i = 0; i < itemList.length; ++i) {
-      const filename = itemList[i]
-      const parsed = npf.parse(filename)
-      if (!parsed) { // non-compliant entry
-        log.warn('DownloadTracker', `failed to parse filename '${filename}'`)
-        continue
-      }
-      switch (parsed.type) {
-        case 'semver':
-          name = parsed.packageName
-          version = parsed.versionComparable
-          if (!tables.semver[name]) tables.semver[name] = {}
-          table = tables.semver[name]
-          break
-        case 'git':
-          name = parsed.repo
-          version = parsed.commit
-          if (!tables.git[name]) tables.git[name] = {}
-          table = tables.git[name]
-          break
-        case 'url':
-          // In the old version, an attempt was made to identify the module name.
-          // Sometimes that succeeded, but it was an unreliable approach, so we
-          // don't include 'name' property anymore.
-          table = tables.url
-          version = parsed.url
-          break
-        default:
-          log.warn('DownloadTracker', `unrecognized parsed type '${parsed.type}'`)
-          continue
-      }
-      table[version] = { filename: filename }
-    }
-  }
-
   // where.toString() covers the (unlikely) case of (where instanceof String)
   const pkgDir = (where) ? path.resolve(where.toString()) : path.resolve()
 
@@ -273,7 +236,11 @@ function create(where, opts, cb)
           return cb(fsErr)
         }
         log.warn('DownloadTracker', 'Could not find a map file; trying to reconstruct...')
-        return tryReconstruct()
+        return reconstructMap(pkgDir, function(err, map) {
+          if (err) return cb(err)
+          Object.assign(tables, map)
+          cb(null, publicSelf)
+        })
       }
 
       let map
@@ -292,17 +259,6 @@ function create(where, opts, cb)
 
       cb(null, publicSelf)
     })
-
-    function tryReconstruct() {
-      // Recognize anything that looks like a package file in the
-      // given directory, and table it
-      fs.readdir(pkgDir, function(err, files) {
-        if (err) return cb(err)
-
-        iterateAndAdd(files, tables)
-        cb(null, publicSelf)
-      })
-    }
   })
 
   function auditAll(cb) {
