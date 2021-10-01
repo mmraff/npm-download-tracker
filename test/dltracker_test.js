@@ -1,112 +1,102 @@
 const assert = require('assert')
-const fs = require('fs')
 const path = require('path')
 const url = require('url')
 
 const expect = require('chai').expect
-const mkdirp = require('mkdirp')
+const fs = require('graceful-fs')
 const rimraf = require('rimraf')
 const tar = require('tar')
 
-const maker = require('../')
-
-function makeCleanDir(dirPath, next, finish) {
-  rimraf(dirPath, function(rmrfErr) {
-    if (rmrfErr) return finish(rmrfErr)
-    mkdirp(dirPath, function(mkdirpErr) {
-      if (mkdirpErr) return finish(mkdirpErr)
-      next()
-    })
-  })
-}
-
-function copyFile(from, to, cb) {
-  var hadError = false
-  function errorOut(err) {
-    hadError = true
-    cb(err)
-  }
-  fs.createReadStream(from)
-  .once('error', errorOut)
-  .pipe(fs.createWriteStream(to, {encoding: null}))
-  .once('error', errorOut)
-  .once('close', function () {
-    if (hadError) return
-    cb()
-  })
-}
+const ut = require('./lib/utilities')
+const mod = require('../')
 
 describe('DownloadTracker module', function() {
   const srcDir = 'test/assets/tarballs'
   const tempDir1 = 'test/assets/dir1'
   const tempDir2 = 'test/assets/dir2'
+  const disposableDirs = [ srcDir, tempDir1, tempDir2 ]
 
   let currentTracker
+  let noLoggingTracker
+  let reallyFinished = false
 
   before('make clean temporary directories', function(done) {
-    makeCleanDir(
-      srcDir,
-      function() {
-        makeCleanDir(
-          tempDir1,
-          function() { makeCleanDir(tempDir2, done, done) },
-          done
-        )
-      },
-      done
-    )
+    function doNextDir(i) {
+      if (i >= disposableDirs.length) return done()
+      ut.makeCleanDir(
+        disposableDirs[i],
+        function(){ doNextDir(++i) },
+        done
+      )
+    }
+    doNextDir(0)
+  })
+  after('remove temporary test assets', function(done) {
+    function removeNextDir(i) {
+      if (i >= disposableDirs.length) return done()
+      rimraf(disposableDirs[i], function(err) {
+        if (err) return done(err)
+        removeNextDir(++i)
+      })
+    }
+    // goIfReady() is part of the workaround for premature after()
+    function goIfReady() {
+      if (reallyFinished) return removeNextDir(0)
+      setTimeout(goIfReady, 10)
+    }
+    goIfReady()
   })
 
   it('should export a function: create', function() {
-    expect(maker.create).to.be.a('function')
+    expect(mod.create).to.be.a('function')
   })
   it('should export an object property: typeMap', function() {
-    expect(maker.typeMap).to.be.an('object')
+    expect(mod.typeMap).to.be.an('object')
   })
   it('the typeMap object should be non-empty', function() {
-    expect(maker.typeMap).to.not.be.empty
+    expect(mod.typeMap).to.not.be.empty
   })
 
-  var emptyArgs   = [ undefined, null, '' ]
-    , notStringArgs = [ 42, true, {}, [] ]
-    , notSimpleObjects = [ 42, true, 'example', [], new Date() ]
-    , notFunctions = [ 42, true, 'example', {}, [] ]
+  const emptyArgs   = [ undefined, null, '' ]
+  const notStringArgs = [ 42, true, {}, [] ]
+  const notSimpleObjects = [ 42, true, 'example', [], new Date() ]
+  const notFunctions = [ 42, true, 'example', {}, [] ]
 
   function dummyFunc(err, data) {
-    assert(false, 'This dummy function should never get called!')
+    throw new Error('This dummy function should never get called!')
   }
 
   describe('create() misuse', function() {
     it('should throw an error when given no arguments', function() {
-      expect(function() { maker.create() }).to.throw(SyntaxError)
+      expect(function() { mod.create() }).to.throw(SyntaxError)
     })
 
     it('should throw an error when given no callback', function() {
-      expect(function() { maker.create('') }).to.throw(SyntaxError)
+      expect(function() { mod.create('') }).to.throw(SyntaxError)
     })
 
     it('should throw an error when given wrong type for callback', function() {
       for (let i = 0; i < notFunctions.length; ++i) {
         expect(function() {
-          maker.create('', notFunctions[i])
+          mod.create('', notFunctions[i])
         }).to.throw(TypeError)
       }
     })
 
     it('should throw an error when only given a callback', function() {
-      expect(function() { maker.create(dummyFunc) }).to.throw(TypeError)
+      expect(function() { mod.create(dummyFunc) }).to.throw(TypeError)
     })
 
     it('should throw when given wrong type for path', function() {
       for (i = 0; i < notStringArgs.length; ++i) {
         expect(function() {
-          maker.create(notStringArgs[i], dummyFunc)
+          mod.create(notStringArgs[i], dummyFunc)
         }).to.throw(TypeError)
       }
     })
 
     it('should pass back an error for non-existent path', function(done) {
-      maker.create('test/assets/NOT_THERE', function(err, tracker) {
+      mod.create('test/assets/NOT_THERE', function(err, tracker) {
         expect(tracker).to.be.undefined
         expect(err).to.be.an('error')
         done()
@@ -116,7 +106,7 @@ describe('DownloadTracker module', function() {
     it('should throw when given wrong type for opts', function(done) {
       for (i = 0; i < notSimpleObjects.length; ++i) {
         expect(function() {
-          maker.create('', notSimpleObjects[i], dummyFunc)
+          mod.create('', notSimpleObjects[i], dummyFunc)
         }).to.throw(TypeError)
       }
       done()
@@ -125,108 +115,163 @@ describe('DownloadTracker module', function() {
 
   describe('create() correct use', function() {
 
+    function runTrackerInspections() {
+      it(
+        'provided object should have these methods:' +
+        ' add, audit, contains, getData, serialize',
+        function() {
+          expect(currentTracker.add).to.be.a('function')
+          expect(currentTracker.audit).to.be.a('function')
+          expect(currentTracker.contains).to.be.a('function')
+          expect(currentTracker.getData).to.be.a('function')
+          expect(currentTracker.serialize).to.be.a('function')
+        }
+      )
+
+      it('and should have a non-empty string "path" property', function() {
+        expect(currentTracker.path).to.be.a('string').that.is.not.empty
+      })
+
+      it('the "path" property should name an existing directory', function(done) {
+        fs.stat(currentTracker.path, function(err, stats) {
+          if (err) return done(err)
+          if (!stats.isDirectory())
+            return done(new Error("Given path is not a directory"))
+          done()
+        })
+      })
+
+      it('should be using the current directory when empty value given for path',
+        function(done) {
+          // cd to an empty directory before running this test; else we get lots
+          // of log warnings (that I put there) for all the non-tarballs in the
+          // main directory of the project!
+          const startingDir = process.cwd()
+          process.chdir(tempDir1)
+          function next(i) {
+            if (i == emptyArgs.length) {
+              process.chdir(startingDir)
+              currentTracker = noLoggingTracker
+              return done()
+            }
+            mod.create(emptyArgs[i], function(err, tracker) {
+              if (err) return done(err)
+              expect(tracker.path).to.equal(process.cwd())
+              next(++i)
+            })
+          }
+          next(0)
+        }
+      )
+    }
+
     it('should provide a non-empty object', function(done) {
-      maker.create(tempDir1, function(err, tracker) {
+      mod.create(tempDir1, function(err, tracker) {
+        if (err) return done(err)
+        expect(tracker).to.be.an('object').that.is.not.empty
+        currentTracker = noLoggingTracker = tracker
+        done()
+      })
+    })
+    runTrackerInspections()
+
+    it('should throw when given invalid values for log option', function(done) {
+      const notObjects = [ 42, true, 'example' ]
+      for (i = 0; i < notObjects.length; ++i) {
+        expect(function() {
+          mod.create(tempDir1, { log: notSimpleObjects[i] }, dummyFunc)
+        }).to.throw(TypeError)
+      }
+
+      let notLog = {}
+      expect(function() {
+        mod.create(tempDir1, { log: notLog }, dummyFunc)
+      }).to.throw(Error)
+
+      const nopFunc = () => {}
+      notLog = { 
+        error: nopFunc, warn: nopFunc, info: nopFunc // missing 'verbose'
+      }
+      expect(function() {
+        mod.create(tempDir1, { log: notLog }, dummyFunc)
+      }).to.throw(Error)
+
+      notLog.verbose = nopFunc  // correct the last problem
+      notLog.error = "SURPRISE" // but introduce another
+      expect(function() {
+        mod.create(tempDir1, { log: notLog }, dummyFunc)
+      }).to.throw(TypeError)
+
+      done()
+    })
+
+    it('should have no errors when given undefined for log option', function(done) {
+      mod.create(tempDir1, { log: undefined }, function(err, tracker) {
         if (err) return done(err)
         expect(tracker).to.be.an('object').that.is.not.empty
         currentTracker = tracker
         done()
       })
     })
+    runTrackerInspections()
 
-    it(
-      'provided object should have these methods:' +
-      ' add, audit, contains, getData, serialize',
-      function() {
-        expect(currentTracker.add).to.be.a('function')
-        expect(currentTracker.audit).to.be.a('function')
-        expect(currentTracker.contains).to.be.a('function')
-        expect(currentTracker.getData).to.be.a('function')
-        expect(currentTracker.serialize).to.be.a('function')
-      }
-    )
-
-    it('and should have a non-empty string "path" property', function() {
-      expect(currentTracker.path).to.be.a('string').that.is.not.empty
-    })
-
-    it('the "path" property should name an existing directory', function(done) {
-      fs.stat(currentTracker.path, function(err, stats) {
+    it('should have no errors when given null for log option', function(done) {
+      mod.create(tempDir1, { log: null }, function(err, tracker) {
         if (err) return done(err)
-        if (!stats.isDirectory())
-          return done(new Error("Given path is not a directory"))
+        expect(tracker).to.be.an('object').that.is.not.empty
+        currentTracker = tracker
         done()
       })
     })
+    runTrackerInspections()
 
-    it('should be using the current directory when empty value given for path',
-      function(done) {
-        // cd to an empty directory before running this test; else we get lots
-        // of log warnings (that I put there) for all the non-tarballs in the
-        // main directory of the project!
-        const startingDir = process.cwd()
-        process.chdir(tempDir1)
-        let i = 0
-        function next() {
-          if (i == emptyArgs.length) {
-            process.chdir(startingDir)
-            return done()
-          }
-          maker.create(emptyArgs[i], function(err, tracker) {
-            if (err) return done(err)
-            expect(tracker.path).to.equal(process.cwd())
-            ++i
-            next()
-          })
-        }
-        next()
+    it('should have no errors when given false for log option', function(done) {
+      mod.create(tempDir1, { log: false }, function(err, tracker) {
+        if (err) return done(err)
+        expect(tracker).to.be.an('object').that.is.not.empty
+        currentTracker = tracker
+        done()
+      })
+    })
+    runTrackerInspections()
+
+    it('should have no errors when valid log object given for log option', function(done) {
+      const nopFunc = () => {}
+      const mockLog = {
+        error: nopFunc, warn: nopFunc, info: nopFunc, verbose: nopFunc
       }
-    )
+      mod.create(tempDir1, { log: mockLog }, function(err, tracker) {
+        if (err) return done(err)
+        expect(tracker).to.be.an('object').that.is.not.empty
+        currentTracker = tracker
+        done()
+      })
+    })
+    runTrackerInspections()
   })
 
-  const dataKeys = {
-    semver: {
-      name: 'dummy', version: '1.2.3',
-      ranges: ['~1', '^1.2', '<2.0'],
-      notRanges: ['~1.1', '<0.1 || >=1.5', '^2']
-    },
-    tag: { name: 'dummy', version: '0.1.2', spec: 'next.big.thing' },
-    git: {
-      repo: 'github.com/someUser/example',
-      commit: '0123456789abcdef0123456789abcdef01234567',
-      tags: ['v2.3.4', 'main']
-    },
-    url: 'https://example.com/someuser/example/archive/5559999.tgz'
-  }
-  const parsedUrl = url.parse(dataKeys.url)
-  const tarballNames = {
-    semver: `${dataKeys.semver.name}-${dataKeys.semver.version}.tar.gz`,
-    tag: `${dataKeys.tag.name}-${dataKeys.tag.version}.tar.gz`,
-    git: encodeURIComponent(`${dataKeys.git.repo}#${dataKeys.git.commit}`) + '.tar.gz',
-    url: encodeURIComponent(`${parsedUrl.host}${parsedUrl.path}`)
-  }
   const goodData = {
     semver: {
-      name: dataKeys.semver.name,
-      version: dataKeys.semver.version,
-      filename: tarballNames.semver,
+      name: ut.dataKeys.semver.name,
+      version: ut.dataKeys.semver.version,
+      filename: ut.tarballNames.semver,
       extra: 'extra semver item data'
     },
     tag: {
-      spec: dataKeys.tag.spec,
-      name: dataKeys.tag.name,
-      version: dataKeys.tag.version,
-      filename: tarballNames.tag
+      spec: ut.dataKeys.tag.spec,
+      name: ut.dataKeys.tag.name,
+      version: ut.dataKeys.tag.version,
+      filename: ut.tarballNames.tag
     },
     git: {
-      repo: dataKeys.git.repo,
-      commit: dataKeys.git.commit,
-      filename: tarballNames.git,
+      repo: ut.dataKeys.git.repo,
+      commit: ut.dataKeys.git.commit,
+      filename: ut.tarballNames.git,
       extra: 'extra git item data'
     },
     url: {
-      spec: dataKeys.url,
-      filename: tarballNames.url,
+      spec: ut.dataKeys.url,
+      filename: ut.tarballNames.url,
       extra: 'extra url item data'
     }
   }
@@ -242,9 +287,10 @@ describe('DownloadTracker module', function() {
       spec: 'https://example.com/another/project/archive/abcdef.tgz'
     }
   }
-  const filenames = Object.values(tarballNames)
+  const filenames = Object.values(ut.tarballNames)
+
   const essentials = {}
-  for (const type in goodData) {
+  for (const type in ut.dataKeys) {
     const fields = new Set([ 'filename' ])
     switch (type) {
       case 'tag':
@@ -264,18 +310,7 @@ describe('DownloadTracker module', function() {
     essentials[type] = fields
   }
 
-  function mockAllDownloads(idx, where, done) {
-    copyFile(
-      path.join(srcDir, filenames[idx]), path.join(where, filenames[idx]),
-      function(err) {
-        if (err) return done(err)
-        if (++idx < filenames.length)
-          return mockAllDownloads(idx, where, done)
-        done()
-      }
-    )
-  }
-
+  // Return a copy of the given data stripped down to the bare minimums for the given type
   function onlyEssentials(type, data) {
     assert(type in essentials, `onlyEssentials: bad type '${type}'`)
     assert(data && typeof data === 'object', `onlyEssentials: bad data`)
@@ -287,13 +322,25 @@ describe('DownloadTracker module', function() {
     return result
   }
 
+  function mockAllDownloads(idx, where, done) {
+    ut.copyFile(
+      path.join(srcDir, filenames[idx]), path.join(where, filenames[idx]),
+      function(err) {
+        if (err) return done(err)
+        if (++idx < filenames.length)
+          return mockAllDownloads(idx, where, done)
+        done()
+      }
+    )
+  }
+
   describe('Instance methods:', function() {
     before('create tarballs to mock packages to add', function(done) {
       const dummyContentPath = 'test/assets/package'
       const tarballPath = path.join(srcDir, filenames[0])
 
       function createOtherTarballs(idx) {
-        copyFile(
+        ut.copyFile(
           tarballPath, path.join(srcDir, filenames[idx]),
           function(err) {
             if (err) return done(err)
@@ -324,11 +371,11 @@ describe('DownloadTracker module', function() {
 
     describe('add()', function() {
       before('create a tracker instance for add() tests', function(done) {
-        // We wait until the maker instance is created before we copy the
+        // We wait until the mod instance is created before we copy the
         // tarballs into the governed directory, so that the automatic iteration
         // of directory contents that happens in create() gets no results
         // (this time).
-        maker.create(tempDir1, function(err, tracker) {
+        mod.create(tempDir1, function(err, tracker) {
           if (err) return done(err)
           currentTracker = tracker
           // Iteratively copy all the tarballs into the governed directory
@@ -618,7 +665,7 @@ describe('DownloadTracker module', function() {
 
       it('should return data of an added version that is contained in the range given as spec',
         function() {
-          const ranges = dataKeys.semver.ranges
+          const ranges = ut.dataKeys.semver.ranges
           const refData = haveJSON ? Object.assign({ type: 'semver' }, goodData.semver)
                                    : onlyEssentials('semver', goodData.semver)
           for (let i = 0; i < ranges.length; ++i) {
@@ -630,7 +677,7 @@ describe('DownloadTracker module', function() {
 
       it('should not return data of an added version that is not contained in the range given as spec',
         function() {
-          const notRanges = dataKeys.semver.notRanges
+          const notRanges = ut.dataKeys.semver.notRanges
           const refData = Object.assign({ type: 'semver' }, goodData.semver)
           for (let i = 0; i < notRanges.length; ++i) {
             expect(currentTracker.getData('semver', testName, notRanges[i]))
@@ -698,7 +745,7 @@ describe('DownloadTracker module', function() {
 
       it('should return true when queried by range spec that matches a previously added version',
         function() {
-          const ranges = dataKeys.semver.ranges
+          const ranges = ut.dataKeys.semver.ranges
           for (let i = 0; i < ranges.length; ++i) {
             expect(currentTracker.contains('semver', testName, ranges[i])).to.be.true
           }
@@ -707,7 +754,7 @@ describe('DownloadTracker module', function() {
 
       it('should return false when queried by range spec that does not match any previously added version',
         function() {
-          const notRanges = dataKeys.semver.notRanges
+          const notRanges = ut.dataKeys.semver.notRanges
           for (let i = 0; i < notRanges.length; ++i) {
             const result = currentTracker.contains('semver', testName, notRanges[i])
             if (result) {
@@ -746,23 +793,34 @@ describe('DownloadTracker module', function() {
       it('should pass back no error when used after changes made', function() {
         currentTracker.serialize(function(err) {
           expect(err).to.not.be.an('error')
+          expect(err).to.not.be.false
+          reallyFinished = true // Part of the workaround for premature after()
         })
       })
 
       it('should have created a dltracker.json file', function(done) {
-        fs.stat(path.join(tempDir1, 'dltracker.json'), function(err, stats) {
-          if (!err && !stats.isFile())
-            err = new Error('dltracker.json is not a regular file')
-          expect(err).to.not.be.an('error')
-          done(err)
-        })
+        // goWhenReady() is part of the workaround for premature after()
+        function goWhenReady() {
+          if (!reallyFinished) return setTimeout(goWhenReady, 10)
+          fs.stat(path.join(tempDir1, 'dltracker.json'), function(err, stats) {
+            if (!err && !stats.isFile())
+              err = new Error('dltracker.json is not a regular file')
+            expect(err).to.not.be.an('error')
+            done(err)
+          })
+        }
+        goWhenReady()
       })
       
     })
 
-    describe('For a new instance on a directory that has tarballs and a JSON file,', function() {
+    // TODO?
+    //describe('audit() with a corrupted JSON file,', function() {
+    //})
+
+    describe('For a new instance with tarballs and a JSON file,', function() {
       before('create a tracker instance for data recovery tests', function(done) {
-        maker.create(tempDir1, function(createErr, tracker) {
+        mod.create(tempDir1, function(createErr, tracker) {
           currentTracker = tracker
           done(createErr)
         })
@@ -837,11 +895,11 @@ describe('DownloadTracker module', function() {
         }
 
         it('should pass back an array of items when problems are detected', function(done) {
-          const types = Object.keys(tarballNames)
+          const types = Object.keys(ut.tarballNames)
           let nameIdx = 0;
           function nextRemoval(done) {
             if (types.length <= nameIdx) return done()
-            const currName = tarballNames[types[nameIdx]]
+            const currName = ut.tarballNames[types[nameIdx]]
             const filePath = path.resolve(tempDir1, currName)
             zeroFileAndTestAudit(
               filePath,
@@ -858,7 +916,7 @@ describe('DownloadTracker module', function() {
 
     })
 
-    describe('For a new instance on a directory that has tarballs but no JSON file,', function() {
+    describe('For a new instance with tarballs but no JSON file,', function() {
       before('create a tracker instance for data recovery tests', function(done) {
         // Fail if there is a dltracker.json in the governed directory
         fs.access(path.join(tempDir2, 'dltracker.json'), function(err, stats) {
@@ -867,7 +925,7 @@ describe('DownloadTracker module', function() {
           // Iteratively copy all the tarballs into the governed directory
           mockAllDownloads(0, tempDir2, function(err) {
             if (err) return done(err)
-            maker.create(tempDir2, function(createErr, tracker) {
+            mod.create(tempDir2, function(createErr, tracker) {
               if (createErr) return done(createErr)
               currentTracker = tracker
               done()
