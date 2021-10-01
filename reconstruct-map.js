@@ -1,14 +1,3 @@
-/*
-TODO:
-* put this file in a minor version update of npm-package-dl-tracker
-* replace the corresponding code in dltracker.js with use of this module
-* Note that when this is made exterior to dltracker.js, the only remaining use
-  of npm-package-filename there is the check on whether the filename in a
-  record has a tarball extension, in auditOne()
-* replace the require() of this from the local directory in this module with
-    const reconstructMap = require('npm-package-dl-tracker/reconstruct-map')
-*/
-
 const fs = require('graceful-fs')
 const npf = require('npm-package-filename')
 
@@ -18,14 +7,13 @@ module.exports = reconstructMap
 // there is no mapping in the dltracker.json file.
 // (We're keeping this factored out of reconstructMap in case we introduce
 // another use for it, e.g., "phantoms")
-function iterateAndAdd(itemList, map) {
+function iterateAndAdd(itemList, map, log) {
   let name, version, table
   for (let i = 0; i < itemList.length; ++i) {
     const filename = itemList[i]
     const parsed = npf.parse(filename)
     if (!parsed) { // non-compliant entry
-// TODO: decide what to do with the log.warn call
-      //log.warn('DownloadTracker', `failed to parse filename '${filename}'`)
+      log.warn('DownloadTracker', `failed to parse filename '${filename}'`)
       continue
     }
     switch (parsed.type) {
@@ -56,15 +44,35 @@ function iterateAndAdd(itemList, map) {
   }
 }
 
-function reconstructMap(dir, cb) {
-  if (dir == undefined || dir == null)
+const dummyFunc = () => {}
+const dummyLog = {
+  error: dummyFunc, warn: dummyFunc, info: dummyFunc, verbose: dummyFunc
+}
+
+function reconstructMap(dir, log, cb) {
+  if (dir === undefined || dir === null || dir === '')
     throw new SyntaxError("No path given")
-  if (typeof dir != 'string' || !dir.length)
+  if (typeof dir != 'string')
     throw new TypeError("First argument must be a non-empty string")
+  if (!cb) {
+    cb = log
+    log = null
+  }
   if (cb == undefined || cb == null)
     throw new SyntaxError("No callback given")
   if (typeof cb != 'function')
-    throw new TypeError("Second argument must be a function")
+    throw new TypeError("Callback argument must be a function")
+  if (log) {
+    if (typeof log !== 'object')
+      throw new TypeError('logger must be an object')
+    for (let prop in dummyLog) {
+      if (!(prop in log))
+        throw new Error(`logger must have a '${prop}' method`)
+      if (typeof log[prop] != 'function')
+        throw new TypeError(`logger '${prop}' property is not a function`)
+    }
+  }
+  else log = dummyLog
 
   // Recognize anything that looks like a package file in the
   // given directory, and table it
@@ -72,8 +80,7 @@ function reconstructMap(dir, cb) {
     if (err) return cb(err)
 
     const map = {}
-    iterateAndAdd(files, map)
+    iterateAndAdd(files, map, log)
     cb(null, map)
   })
 }
-

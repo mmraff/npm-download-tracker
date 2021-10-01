@@ -5,10 +5,14 @@ const url = require('url')
 // 3rd party dependencies
 const fs = require('graceful-fs')
 const semver = require('semver')
-const log = require('npmlog')
 const npf = require('npm-package-filename')
 
 const reconstructMap = require('./reconstruct-map')
+
+const dummyFunc = () => {}
+const dummyLog = {
+  error: dummyFunc, warn: dummyFunc, info: dummyFunc, verbose: dummyFunc
+}
 
 const NPA_TO_DLT_TYPE_MAP = { // for external use
   version: 'semver',
@@ -202,12 +206,23 @@ function create(where, opts, cb)
       throw new TypeError('options must be given as an object')
     if (Object.getPrototypeOf(opts) !== Object.getPrototypeOf({}))
       throw new TypeError('options must be given as a plain object')
+    if (opts.log) {
+      if (typeof opts.log !== 'object')
+        throw new TypeError('logger option value must be an object')
+      for (let prop in dummyLog) {
+        if (!(prop in opts.log))
+          throw new Error(`logger must have a '${prop}' method`)
+        if (typeof opts.log[prop] != 'function')
+          throw new TypeError(`logger '${prop}' property is not a function`)
+      }
+    }
   }
   else opts = {}
   expectCallback(cb)
 
   const tables = { semver: {}, tag: {}, url: {}, git: {} }
   const oldInfo = {}
+  const log = opts.log || dummyLog
 
   // where.toString() covers the (unlikely) case of (where instanceof String)
   const pkgDir = (where) ? path.resolve(where.toString()) : path.resolve()
@@ -236,7 +251,7 @@ function create(where, opts, cb)
           return cb(fsErr)
         }
         log.warn('DownloadTracker', 'Could not find a map file; trying to reconstruct...')
-        return reconstructMap(pkgDir, function(err, map) {
+        return reconstructMap(pkgDir, log, function(err, map) {
           if (err) return cb(err)
           Object.assign(tables, map)
           cb(null, publicSelf)
