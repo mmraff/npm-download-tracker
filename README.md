@@ -21,11 +21,11 @@ npm install npm-package-dl-tracker
 ## Usage
 
 ```js
-const trackerMaker = require('npm-package-dl-tracker')
+const dltFactory = require('npm-package-dl-tracker')
 
 // ...
 
-trackerMaker.create('path/to/put/tarballs', function(err, tracker) {
+dltFactory.create('path/to/put/tarballs', function(err, tracker) {
   if (err) return fallback(err)
   proceedWithTracker(tracker)
 })
@@ -61,27 +61,32 @@ tracker.serialize(function(err) {
 ```
 
 
-## Module API
+## Main Module API
 
-### `trackerMaker.typeMap`
+### `dltFactory.typeMap`
 A hash of `npm-package-arg` package types to `npm-package-dl-tracker` package types.
 ```js
-trackerMaker.typeMap['version'] // --> 'semver'
-trackerMaker.typeMap['tag']     // --> 'tag'
-trackerMaker.typeMap['git']     // --> 'git'
-trackerMaker.typeMap['remote']  // --> 'url'
-trackerMaker.typeMap['file']    // --> undefined
+dltFactory.typeMap['version'] // --> 'semver'
+dltFactory.typeMap['tag']     // --> 'tag'
+dltFactory.typeMap['git']     // --> 'git'
+dltFactory.typeMap['remote']  // --> 'url'
+dltFactory.typeMap['file']    // --> undefined
 ```
 
 A value obtained from this mapping is to be used as the first argument to instance methods `add()`, `contains()`, and `get()`.
 
 Only covers the ones that are meaningful in this context.
 
-### `trackerMaker.create(where, cb)`
+### `dltFactory.create(where, [options,] cb)`
 Factory function to instantiate a tracker instance.
 * `where` {string || `undefined` || `null`} Path to put/find tarballs
 
   If empty value is given, the current directory will be used.
+
+* `options` {object || `undefined` || `null`} *Optional*
+  * `log` {object} *Optional*
+
+  If `log` option present, must have these methods: `error`, `warn`, `info`, `verbose`
 
 * `cb` {function} Callback
   * `error` {Error || `null`}
@@ -93,7 +98,7 @@ Factory function to instantiate a tracker instance.
 {string} The absolute path adopted by this instance for location of tarballs
 
 ### `tracker.add(type, data, cb)`
-* `type` {string} One of the values from **`trackerMaker.typeMap`** (see above)
+* `type` {string} One of the values from **`dltFactory.typeMap`** (see above)
 * `data` {object} Contains fields to associate with a given tarball.
   Arbitrary extra fields may be included with required fields.
 
@@ -119,7 +124,7 @@ Factory function to instantiate a tracker instance.
 
 ### `tracker.contains(type, name, spec)`
 *Synchronous*
-* `type` {string} One of the values from **`trackerMaker.typeMap`** (see above)
+* `type` {string} One of the values from **`dltFactory.typeMap`** (see above)
 * `name` {string}
 
   For `type` `'semver'` or `'tag'`, must be the package name
@@ -165,6 +170,32 @@ Runs checks on the items in the current data, including the condition of each fi
   * `list` {Array} A list of objects describing problems discovered in the current tracker data, if any:
     * `data` {object} The same data as returned by `tracker.getData()`
     * `error` {Error} The error encountered for the package identified by `data`
+
+
+## Submodule API: `reconstruct-map.js`
+Primary purpose is to recreate the tracker data structure for a directory of packages that has no JSON file, though it can also be used without harm even if there is a dltracker.json file in the directory.
+```js
+const reconstructMap = require('npm-package-dl-tracker/reconstruct-map')
+
+// ...
+
+reconstructMap('path/to/tarballs', function(err, map) {
+  if (err) return handleError(err)
+  handleTrackerMap(map)
+})
+
+```
+### `reconstructMap(dir, [log,] cb)`
+* `dir` {string} Path to find tarballs
+* `log` {object || `undefined` || `null`} *Optional*
+
+  If given, must have these methods: `error`, `warn`, `info`, `verbose`
+
+* `cb` {function} Callback
+  * `error` {Error || null}
+  * `map` {object}
+
+  The result object contains a tree structure with the bare minimum of data for every package tarball (with a parseable name) found in the given directory.
 
 ------
 
