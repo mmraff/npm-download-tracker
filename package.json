@@ -22,7 +22,6 @@
   "dependencies": {
     "graceful-fs": "^4.2.3",
     "npm-package-filename": "^1.0.0",
-    "npmlog": "^4.1",
     "semver": "^5.7"
   },
   "devDependencies": {
