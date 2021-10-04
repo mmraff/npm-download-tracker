@@ -29,7 +29,7 @@ const DLT_TYPES = new Set([ // internal
   'git', 'semver', 'tag', 'url'
 ])
 const KEYFIELDS = new Set([ // internal
-  'name', 'version', 'spec', 'repo', 'commit', 'refs'
+  'type', 'name', 'version', 'spec', 'repo', 'commit'
 ])
 
 const GIT_REMOTES_LEGACY_DIR = '_git-remotes'
