@@ -1,6 +1,5 @@
 const assert = require('assert')
 const fs = require('fs')
-const url = require('url')
 
 const mkdirp = require('mkdirp')
 const npf = require('npm-package-filename')
