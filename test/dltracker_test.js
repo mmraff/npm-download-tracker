@@ -18,7 +18,6 @@ describe('DownloadTracker module', function() {
 
   let currentTracker
   let noLoggingTracker
-  let reallyFinished = false
 
   before('make clean temporary directories', function(done) {
     function doNextDir(i) {
@@ -39,12 +38,7 @@ describe('DownloadTracker module', function() {
         removeNextDir(++i)
       })
     }
-    // goIfReady() is part of the workaround for premature after()
-    function goIfReady() {
-      if (reallyFinished) return removeNextDir(0)
-      setTimeout(goIfReady, 10)
-    }
-    goIfReady()
+    removeNextDir(0)
   })
 
   it('should export a function: create', function() {
@@ -790,26 +784,17 @@ describe('DownloadTracker module', function() {
         }
       })
 
-      it('should pass back no error when used after changes made', function() {
+      it('should create a dltracker.json file with no error when used after changes', function(done) {
         currentTracker.serialize(function(err) {
           expect(err).to.not.be.an('error')
           expect(err).to.not.be.false
-          reallyFinished = true // Part of the workaround for premature after()
-        })
-      })
-
-      it('should have created a dltracker.json file', function(done) {
-        // goWhenReady() is part of the workaround for premature after()
-        function goWhenReady() {
-          if (!reallyFinished) return setTimeout(goWhenReady, 10)
           fs.stat(path.join(tempDir1, 'dltracker.json'), function(err, stats) {
             if (!err && !stats.isFile())
               err = new Error('dltracker.json is not a regular file')
             expect(err).to.not.be.an('error')
             done(err)
           })
-        }
-        goWhenReady()
+        })
       })
       
     })
