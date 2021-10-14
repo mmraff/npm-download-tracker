@@ -49,6 +49,7 @@ function auditOne(type, data, dir, cb)
   let fileSpec = data.filename
   if (!fileSpec) {
     if (type === 'git') {
+console.log('auditOne: git case data:', data)
       // In the legacy version of dltracker, it's not a tarball that gets saved,
       // but a cloned repo with an ad-hoc directory name (--> repoID).
       if (!data.repoID) {
@@ -284,40 +285,35 @@ function create(where, opts, cb)
     let pkgKeyIndex = 0
     let versions
     let versionKeys
-    let verKeyIndex = 0
     const errors = []
 
-    function nextVersion(done) {
-      if (verKeyIndex < versionKeys.length) {
-        const name = pkgKeys[pkgKeyIndex]
-        const ver = versionKeys[verKeyIndex]
-        const data = versions[ver] 
-        auditOne(
-          'semver', data, pkgDir,
-          function(err) {
-            if (err) errors.push({
-              data: preparedData('semver', name, ver),
-              error: err
-            })
-            ++verKeyIndex
-            nextVersion(done)
-          }
-        )
-      }
-      else done()
+    function nextVersion(i, done) {
+      if (i >= versionKeys.length) return done()
+
+      const name = pkgKeys[pkgKeyIndex]
+      const ver = versionKeys[i]
+      const data = versions[ver] 
+      auditOne(
+        'semver', data, pkgDir,
+        function(err) {
+          if (err) errors.push({
+            data: preparedData('semver', name, ver),
+            error: err
+          })
+          nextVersion(++i, done)
+        }
+      )
     }
 
     function nextSemverPkg(done) {
-      if (pkgKeyIndex < pkgKeys.length) {
-        versions = pkgs[pkgKeys[pkgKeyIndex]]
-        versionKeys = Object.keys(versions)
-        nextVersion(function() {
-          ++pkgKeyIndex
-          verKeyIndex = 0
-          nextSemverPkg(done)
-        })
-      }
-      else done()
+      if (pkgKeyIndex >= pkgKeys.length) return done()
+
+      versions = pkgs[pkgKeys[pkgKeyIndex]]
+      versionKeys = Object.keys(versions)
+      nextVersion(0, function() {
+        ++pkgKeyIndex
+        nextSemverPkg(done)
+      })
     }
 
     function iterateTagPkgs() {
@@ -347,76 +343,73 @@ function create(where, opts, cb)
       }
     }
 
-    function nextCommit(done) {
+    function nextCommit(i, done) {
+      if (i >= versionKeys.length) return done()
+
       let err
-      if (verKeyIndex < versionKeys.length) {
-        const repo = pkgKeys[pkgKeyIndex]
-        const commit = versionKeys[verKeyIndex]
-        const data = versions[commit]
-        if ('commit' in data) {
-          // This is a ref record. Verify the reference:
-          if (!versions[data.commit]) {
-            err = new Error("Orphaned git commit reference")
-            err.code = 'EORPHANREF'
-          }
-        }
-        else if (!Object.keys(data).length) {
-          err = new Error('No data in git record')
-          err.code = 'ENODATA'
-        }
-        if (err) {
+      const repo = pkgKeys[pkgKeyIndex]
+      const commit = versionKeys[i]
+      const data = versions[commit]
+      if ('commit' in data) {
+        // This is a ref record. Verify the reference:
+        if (!versions[data.commit]) {
+          err = new Error("Orphaned git commit reference")
+          err.code = 'EORPHANREF'
           errors.push({
             data: preparedData('git', repo, commit),
             error: err
           })
-          ++verKeyIndex
-          return nextCommit(done)
         }
-        auditOne(
-          'git', data, pkgDir,
-          function(err) {
-            if (err) errors.push({
-              data: preparedData('git', repo, commit),
-              error: err
-            })
-            ++verKeyIndex
-            nextCommit(done)
-          }
-        )
+        return nextCommit(++i, done)
       }
-      else done()
+      if (!Object.keys(data).length) {
+        err = new Error('No data in git record')
+        err.code = 'ENODATA'
+        errors.push({
+          data: preparedData('git', repo, commit),
+          error: err
+        })
+        return nextCommit(++i, done)
+      }
+      auditOne(
+        'git', data, pkgDir,
+        function(err) {
+          if (err) errors.push({
+            data: preparedData('git', repo, commit),
+            error: err
+          })
+          nextCommit(++i, done)
+        }
+      )
     }
 
     function nextGitPkg(done) {
-      if (pkgKeyIndex < pkgKeys.length) {
-        versions = pkgs[pkgKeys[pkgKeyIndex]]
-        versionKeys = Object.keys(versions)
-        nextCommit(function() {
-          ++pkgKeyIndex
-          verKeyIndex = 0
-          nextGitPkg(done)
-        })
-      }
-      else done()
+      if (pkgKeyIndex >= pkgKeys.length) return done()
+
+      versions = pkgs[pkgKeys[pkgKeyIndex]]
+      versionKeys = Object.keys(versions)
+      nextCommit(0, function() {
+        ++pkgKeyIndex
+        nextGitPkg(done)
+      })
     }
 
     function nextURLPkg(done) {
-      if (pkgKeyIndex < pkgKeys.length) {
-        const spec = pkgKeys[pkgKeyIndex]
-        const data = pkgs[spec] 
-        auditOne(
-          'url', data, pkgDir,
-          function(err) {
-            if (err) errors.push({
-              data: preparedData('url', null, spec),
-              error: err
-            })
-            ++pkgKeyIndex
-            nextURLPkg(done)
-          }
-        )
-      }
-      else done()
+      if (pkgKeyIndex >= pkgKeys.length) return done()
+
+      const spec = pkgKeys[pkgKeyIndex]
+      const data = pkgs[spec] 
+      auditOne(
+        'url', data, pkgDir,
+        function(err) {
+          if (err) errors.push({
+            data: preparedData('url', null, spec),
+            error: err
+          })
+          ++pkgKeyIndex
+          nextURLPkg(done)
+        }
+      )
     }
 
     pkgs = tables['semver']
@@ -427,7 +420,6 @@ function create(where, opts, cb)
       pkgs = tables['git']
       pkgKeys = Object.keys(pkgs)
       pkgKeyIndex = 0
-      verKeyIndex = 0
       nextGitPkg(function() {
         pkgs = tables['url']
         pkgKeys = Object.keys(pkgs)
