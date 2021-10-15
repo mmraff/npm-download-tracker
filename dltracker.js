@@ -49,7 +49,6 @@ function auditOne(type, data, dir, cb)
   let fileSpec = data.filename
   if (!fileSpec) {
     if (type === 'git') {
-console.log('auditOne: git case data:', data)
       // In the legacy version of dltracker, it's not a tarball that gets saved,
       // but a cloned repo with an ad-hoc directory name (--> repoID).
       if (!data.repoID) {

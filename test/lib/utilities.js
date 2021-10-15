@@ -60,8 +60,7 @@ function copyFile(from, to, cb) {
   .pipe(fs.createWriteStream(to, {encoding: null}))
   .once('error', errorOut)
   .once('close', function () {
-    if (hadError) return
-    cb()
+    if (!hadError) cb()
   })
 }
 
