@@ -10,10 +10,60 @@ const tar = require('tar')
 const ut = require('./lib/utilities')
 const mod = require('../')
 
+const MAPFILE_NAME = 'dltracker.json'
+const ASSETS_BASE = './test/assets'
+const badJson = [
+  { file: 'dltracker_GIT_NO-FILENAME.json', type: 'git', code: 'ENODATA' },
+  { file: 'dltracker_GIT_REF-NO-COMMIT.json', type: 'git', code: 'ENODATA' },
+  { file: 'dltracker_GIT_REF-ORPHAN.json', type: 'git', code: 'EORPHANREF' },
+  { file: 'dltracker_SEMVER_NO-FILENAME.json', type: 'semver', code: 'ENODATA' },
+  { file: 'dltracker_SEMVER-TAG_NO-VERSION.json', type: 'tag', code: 'ENODATA' },
+  { file: 'dltracker_TAG_ORPHAN.json', type: 'tag', code: 'EORPHANREF' },
+  { file: 'dltracker_URL_NO-FILENAME.json', type: 'url', code: 'ENODATA' }
+]
+
+// Get a list of the values of all "filename" properties found in
+// the JSON file at the given path
+function extractFilenames(jsonFilepath, cb) {
+  fs.readFile(jsonFilepath, 'utf8', function(err, s) {
+    if (err) return cb(err)
+    if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1)
+    const list = []
+    let map
+    try { map = JSON.parse(s) }
+    catch (parseErr) { console.log(s.slice(650)); return cb(parseErr) }
+
+    const semverMap = map.semver || {}
+    for (let name in semverMap) {
+      const versions = semverMap[name]
+      for (let ver in versions) {
+        if ('filename' in versions[ver])
+          list.push(versions[ver].filename)
+      }
+    }
+
+    const gitMap = map.git || {}
+    for (let repo in gitMap) {
+      const refs = gitMap[repo]
+      for (let ref in refs) {
+        if ('filename' in refs[ref])
+          list.push(refs[ref].filename)
+      }
+    }
+
+    const urlMap = map.url || {}
+    for (let spec in urlMap) {
+      if ('filename' in urlMap[spec])
+        list.push(urlMap[spec].filename)
+    }
+    cb(null, list)
+  })
+}
+
 describe('DownloadTracker module', function() {
-  const srcDir = 'test/assets/tarballs'
-  const tempDir1 = 'test/assets/dir1'
-  const tempDir2 = 'test/assets/dir2'
+  const srcDir = path.join(ASSETS_BASE, 'tarballs')
+  const tempDir1 = path.join(ASSETS_BASE, 'dir1')
+  const tempDir2 = path.join(ASSETS_BASE, 'dir2')
   const disposableDirs = [ srcDir, tempDir1, tempDir2 ]
 
   let currentTracker
@@ -269,7 +319,7 @@ describe('DownloadTracker module', function() {
       extra: 'extra url item data'
     }
   }
-  const unkownData = {
+  const unknownData = {
     semver: { name: 'not-dummy', spec: '3.4.5' },
     tag: { name: 'superbad', spec: 'teflon' },
     git: {
@@ -316,16 +366,23 @@ describe('DownloadTracker module', function() {
     return result
   }
 
-  function mockAllDownloads(idx, where, done) {
-    ut.copyFile(
-      path.join(srcDir, filenames[idx]), path.join(where, filenames[idx]),
-      function(err) {
-        if (err) return done(err)
-        if (++idx < filenames.length)
-          return mockAllDownloads(idx, where, done)
-        done()
-      }
-    )
+  function createOtherTarballs(idx, fileList, srcPath, cb) {
+    if (idx >= fileList.length) return cb()
+    const copyPath = path.join(srcDir, fileList[idx])
+    ut.copyFile(srcPath, copyPath, function(err) {
+      if (err) return cb(err)
+      createOtherTarballs(++idx, fileList, srcPath, cb)
+    })
+  }
+
+  function mockAllDownloads(idx, fileList, where, cb) {
+    if (idx >= fileList.length) return cb()
+    const srcFilePath = path.join(srcDir, fileList[idx])
+    const tgtFilePath = path.join(where, fileList[idx])
+    ut.copyFile(srcFilePath, tgtFilePath, function(err) {
+      if (err) return cb(err)
+      mockAllDownloads(++idx, fileList, where, cb)
+    })
   }
 
   describe('Instance methods:', function() {
@@ -333,22 +390,11 @@ describe('DownloadTracker module', function() {
       const dummyContentPath = 'test/assets/package'
       const tarballPath = path.join(srcDir, filenames[0])
 
-      function createOtherTarballs(idx) {
-        ut.copyFile(
-          tarballPath, path.join(srcDir, filenames[idx]),
-          function(err) {
-            if (err) return done(err)
-            if (++idx < filenames.length)
-              return createOtherTarballs(idx)
-            done()
-          }
-        )
-      }
-
       tar.c(
         { gzip: true, file: tarballPath }, [ dummyContentPath ]
       ).then(() => {
-        createOtherTarballs(1) // the first (0) is what we copy from
+        // the first (0) is the source we copy from
+        createOtherTarballs(1, filenames, tarballPath, done)
       }).catch(err => {
         done(err)
       })
@@ -373,7 +419,7 @@ describe('DownloadTracker module', function() {
           if (err) return done(err)
           currentTracker = tracker
           // Iteratively copy all the tarballs into the governed directory
-          mockAllDownloads(0, tempDir1, done)
+          mockAllDownloads(0, filenames, tempDir1, done)
         })
       })
 
@@ -593,8 +639,8 @@ describe('DownloadTracker module', function() {
     function runCommon_getData_tests(haveJSON) {
       it ('should return undefined for package name & spec that has not been added',
         function() {
-          for (var type in unkownData) {
-            let item = unkownData[type]
+          for (var type in unknownData) {
+            let item = unknownData[type]
             let other = goodData[type]
             assert(
               item.name != (other.name || other.repo) ||
@@ -684,8 +730,8 @@ describe('DownloadTracker module', function() {
     function runCommon_contains_tests(haveJSON) {
       it ('should return false for package name & spec that has not been added',
         function() {
-          for (var type in unkownData) {
-            let item = unkownData[type]
+          for (var type in unknownData) {
+            let item = unknownData[type]
             let other = goodData[type]
             assert(
               item.name != (other.name || other.repo) ||
@@ -819,7 +865,7 @@ describe('DownloadTracker module', function() {
       })
 
       describe('audit()', function() {
-        it('should throw an error when not given an argument', function() {
+        it('should throw an error when given no argument', function() {
           expect(function() { currentTracker.audit() }).to.throw(SyntaxError)
         })
 
@@ -897,18 +943,52 @@ describe('DownloadTracker module', function() {
           }
           nextRemoval(done)
         })
+
+        // Late addition: Tests of problems in the JSON
+        it('should contain error and data for each problem in the JSON', function(done) {
+          const origFilePath = path.join(srcDir, filenames[0])
+          const allGoodJsonPath = path.join(ASSETS_BASE, 'json', 'dltracker_ALL_GOOD.json')
+          extractFilenames(allGoodJsonPath, function(err, moreTarballs) {
+            if (err) return done(err)
+            createOtherTarballs(0, moreTarballs, origFilePath, function(err) {
+              if (err) return done(err)
+              // We have not touched tempDir2 yet
+              mockAllDownloads(0, moreTarballs, tempDir2, function(err) {
+                if (err) return done(err)
+                nextBadJson(0)
+              })
+            })
+          })
+
+          function nextBadJson(i) {
+            if (i >= badJson.length) return done()
+            const src = path.join(ASSETS_BASE, 'json', badJson[i].file)
+            const tgt = path.join(tempDir2, MAPFILE_NAME)
+            ut.copyFile(src, tgt, function(err) {
+              if (err) return done(err)
+              mod.create(tempDir2, function(createErr, tracker) {
+                tracker.audit(function(err, results) {
+                  if (err) return done(err)
+                  expect(results).to.be.an('array').that.is.not.empty
+                  expect(results[0].data.type).to.equal(badJson[i].type)
+                  expect(results[0].error.code).to.equal(badJson[i].code)
+                  nextBadJson(++i)
+                })
+              })
+            })
+          }
+        })
       })
 
     })
 
     describe('For a new instance with tarballs but no JSON file,', function() {
       before('create a tracker instance for data recovery tests', function(done) {
-        // Fail if there is a dltracker.json in the governed directory
-        fs.access(path.join(tempDir2, 'dltracker.json'), function(err, stats) {
-          expect(err).to.be.an('error')
+        ut.makeCleanDir(tempDir2, thenPopulate, done)
 
+        function thenPopulate() {
           // Iteratively copy all the tarballs into the governed directory
-          mockAllDownloads(0, tempDir2, function(err) {
+          mockAllDownloads(0, filenames, tempDir2, function(err) {
             if (err) return done(err)
             mod.create(tempDir2, function(createErr, tracker) {
               if (createErr) return done(createErr)
@@ -916,7 +996,7 @@ describe('DownloadTracker module', function() {
               done()
             })
           })
-        })
+        }
       })
 
       describe('getData()', function() {

@@ -7,18 +7,18 @@ const rimraf = require('rimraf')
 
 const dataKeys = {
   semver: {
-    name: 'dummy', version: '1.2.3',
+    name: 'example', version: '1.2.3',
     ranges: ['~1', '^1.2', '<2.0'],
     notRanges: ['~1.1', '<0.1 || >=1.5', '^2']
   },
-  tag: { name: 'dummy', version: '0.1.2', spec: 'next.big.thing' },
+  tag: { name: 'example', version: '0.1.2', spec: 'next.big.thing' },
   git: {
     domain: 'github.com',
     path: 'someUser/example',
     commit: '0123456789abcdef0123456789abcdef01234567',
     tags: ['v2.3.4', 'main']
   },
-  url: 'https://example.com/someuser/example/archive/5559999.tgz'
+  url: 'https://example.net/someuser/example/archive/76543210.tgz'
 }
 dataKeys.git.repo = [ dataKeys.git.domain, '/', dataKeys.git.path ].join('')
 
