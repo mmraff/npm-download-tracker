@@ -31,7 +31,7 @@ function extractFilenames(jsonFilepath, cb) {
     const list = []
     let map
     try { map = JSON.parse(s) }
-    catch (parseErr) { console.log(s.slice(650)); return cb(parseErr) }
+    catch (parseErr) { return cb(parseErr) }
 
     const semverMap = map.semver || {}
     for (let name in semverMap) {
