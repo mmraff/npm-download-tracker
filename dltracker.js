@@ -85,6 +85,7 @@ function auditOne(type, data, dir, cb)
     }
     else if(!npf.hasTarballExtension(fileSpec)) {
       err = new Error('File does not have a tarball extension')
+      err.code = 'EFNAME'
       err.path = filePath
     }
     cb(err, fileSpec)
