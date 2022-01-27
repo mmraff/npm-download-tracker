@@ -73,9 +73,9 @@ dltFactory.typeMap['remote']  // --> 'url'
 dltFactory.typeMap['file']    // --> undefined
 ```
 
-A value obtained from this mapping is to be used as the first argument to instance methods `add()`, `contains()`, and `get()`.
+A value from this mapping is to be used as the first argument to instance methods `add()`, `contains()`, and `getData()`.
 
-Only covers the ones that are meaningful in this context.
+Only the ones that are meaningful in this context are defined.
 
 ### `dltFactory.create(where, [options,] cb)`
 Factory function to instantiate a tracker instance.
@@ -115,6 +115,10 @@ Factory function to instantiate a tracker instance.
   * `commit` {string} The git hash that identifies a commit in the given repository
   * `filename` {string} The name of the tarball file
 
+  If a field called `refs` is included in data of `type` `'git'`, it must be an
+  Array of strings; the strings will be interpreted as tags, and each will be
+  treated as an alias for the commit.
+
   For `type` `'url'`, required fields are:
   * `spec` {string} A remote URL
   * `filename` {string} The name of the tarball file
@@ -139,7 +143,11 @@ Factory function to instantiate a tracker instance.
 
   For `type` `'tag'`, must be the version tag
 
-  For `type` `'git'`, must be the git hash that identifies a commit
+  For `type` `'git'`, can be...
+  - a git commit hash
+  - a git tag
+  - a valid Semver 2.0 expression prefixed by `'semver:'`
+  - empty string or `'*'`, which will match if there is a 'master' or 'main' tag or only one commit present for the named repo
 
   For `type` `'url'`, must be a remote URL
 
@@ -153,12 +161,12 @@ Factory function to instantiate a tracker instance.
 Same argument requirements as for `contains()`.
 * Returns: {object || `null`}
 
-  If the identified package was previously added, this will contain the same data passed to `tracker.add()`, with the additional field `type`.
+  If the identified package was previously added, this will contain the same data passed to `tracker.add()`, with the additional field `type`. If `type` `'git'`, and a tag or a `'semver:'`-prefixed expression is given, then a `spec` field with that value will be included.
 
 ***Caveat:*** For `type` `'tag'`, if the value of `spec` is `'latest'` or `''`, the call will return the data of the highest version added, which is not necessarily the current latest version.
 
 ### `tracker.serialize(cb)`
-Writes the current modified state to the file `dltracker.json` in the adopted directory (**`tracker.path`**).
+Writes the current modified state to a file named dltracker.json in the adopted directory (**`tracker.path`**).
 Does nothing if there has not been a call to **`tracker.add()`** since instantiation or since the last call to **`tracker.serialize()`**.
 * `cb` {function} Callback
   * `error` {Error || `undefined`}
