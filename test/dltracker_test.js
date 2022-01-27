@@ -311,6 +311,7 @@ describe('DownloadTracker module', function() {
       repo: ut.dataKeys.git.repo,
       commit: ut.dataKeys.git.commit,
       filename: ut.tarballNames.git,
+      refs: [ 'master', 'v6.6.6' ],
       extra: 'extra git item data'
     },
     url: {
@@ -490,7 +491,8 @@ describe('DownloadTracker module', function() {
         for (var type in goodData) {
           const d0 = goodData[type]
           for (var prop in d0) {
-            if (prop === 'extra') continue
+            // Had to include 'refs' after adding refs field to the test data for git
+            if (prop === 'extra' || prop === 'refs') continue
             const dx = Object.assign({}, d0)
             delete dx[prop]
             expect(function() {
@@ -506,7 +508,7 @@ describe('DownloadTracker module', function() {
         for (var type in goodData) {
           const d0 = goodData[type]
           for (var prop in d0) {
-            if (prop === 'extra') continue
+            if (prop === 'extra' || prop === 'refs') continue // ditto comment in test above
             const dx = Object.assign({}, d0)
             for (var i = 0; i < notStringArgs.length; ++i) {
               dx[prop] = notStringArgs[i]
@@ -563,7 +565,7 @@ describe('DownloadTracker module', function() {
 
     const testName = goodData.semver.name
     const testVer = goodData.semver.version
-    // The throwable tests are exactly the same for getData and contains
+    // The throwable test conditions are exactly the same for getData and contains
     function runThrowableTestsOnQuery(methodName) {
       assert(
         methodName === 'getData' || methodName === 'contains',
@@ -725,6 +727,62 @@ describe('DownloadTracker module', function() {
           }
         }
       )
+
+      if (haveJSON) {
+        const gitRepo = goodData.git.repo
+        const refData = Object.assign({ type: 'git' }, goodData.git)
+        it('should return data of the queried git repo if no spec given, when record contains ref "master" or "main"',
+          function() {
+            const resultData = currentTracker.getData('git', gitRepo, '')
+            expect(resultData).to.deep.equal(refData)
+          }
+        )
+        it('should return data of a git repo queried by spec "*", when record contains ref "master" or "main"',
+          function() {
+            const resultData = currentTracker.getData('git', gitRepo, '*')
+            expect(resultData).to.deep.equal(refData)
+          }
+        )
+        it('should return data matching previously added record when queried by correct git tag',
+          function() {
+            const refs = goodData.git.refs
+            for (let i = 0; i < refs.length; ++i) {
+              const resultData = currentTracker.getData('git', gitRepo, refs[i])
+              const extendedRefData = Object.assign({ spec: refs[i] }, refData)
+              expect(resultData).to.deep.equal(extendedRefData)
+            }
+          }
+        )
+        it('should return undefined when queried for known repo, but with git tag not matching any record',
+          function() {
+            expect(currentTracker.getData('git', gitRepo, 'UNKNOWN_REF')).to.be.undefined
+          }
+        )
+
+        // For when tracker is queried for a git package by semver expression (obscure case!)
+        it('should return correct data when queried by range spec matching previously added version (git pkg)',
+          function() {
+            // For visual verification: currently, goodData.git.refs[1] is 'v6.6.6'
+            // OK, 1st verify that programmatically:
+            assert(goodData.git.refs[1] == 'v6.6.6', 'OH NO, the git test data was changed...')
+            const rangeSpec = 'semver:^6.3'
+            const resultData = currentTracker.getData('git', gitRepo, rangeSpec)
+            const extendedRefData = Object.assign({ spec: rangeSpec }, refData)
+            expect(resultData).to.deep.equal(extendedRefData)
+          }
+        )
+        it('should return undefined when queried by range spec not matching previously added version (git pkg)',
+          function() {
+            const omittingRange = 'semver:<1.2.3'
+            const resultData = currentTracker.getData('git', gitRepo, omittingRange)
+            if (resultData) {
+              console.error(`OOPS: ${gitRepo} ${omittingRange}`)
+              console.dir(resultData)
+            }
+            expect(resultData).to.be.undefined
+          }
+        )
+      }
     }
 
     function runCommon_contains_tests(haveJSON) {
@@ -783,7 +841,7 @@ describe('DownloadTracker module', function() {
         }
       )
 
-      it('should return true when queried by range spec that matches a previously added version',
+      it('should return true when queried by range spec matching previously added version (semver pkg)',
         function() {
           const ranges = ut.dataKeys.semver.ranges
           for (let i = 0; i < ranges.length; ++i) {
@@ -805,6 +863,49 @@ describe('DownloadTracker module', function() {
           }
         }
       )
+
+      if (haveJSON) {
+        const gitRepo = goodData.git.repo
+        it('should return true when queried by git repo if no spec given, when record contains ref "master" or "main"',
+          function() {
+            const refs = goodData.git.refs
+            expect(currentTracker.contains('git', gitRepo, '')).to.be.true
+          }
+        )
+        it('should return true when queried by git tag matching previously added record',
+          function() {
+            const refs = goodData.git.refs
+            for (let i = 0; i < refs.length; ++i)
+              expect(currentTracker.contains('git', gitRepo, refs[i])).to.be.true
+          }
+        )
+        it('should return false when queried by git tag not matching any previously added record',
+          function() {
+            expect(currentTracker.contains('git', gitRepo, 'UNKNOWN_REF')).to.be.false
+          }
+        )
+
+        // For when tracker is queried for a git package by semver expression (obscure case!)
+        it('should return true when queried by range spec matching previously added version (git pkg)',
+          function() {
+            // For visual verification: currently, goodData.git.refs[1] is 'v6.6.6'
+            // OK, 1st verify that programmatically:
+            assert(goodData.git.refs[1] == 'v6.6.6', 'OH NO, the git test data was changed...')
+            expect(currentTracker.contains('git', gitRepo, 'semver:^6.3')).to.be.true
+          }
+        )
+        it('should return false when queried by range spec not matching previously added version (git pkg)',
+          function() {
+            const omittingRange = 'semver:<1.2.3'
+            const result = currentTracker.contains('git', gitRepo, omittingRange)
+            if (result) {
+              console.error(`OOPS: ${gitRepo} ${omittingRange}`)
+              console.dir(currentTracker.getData('git', gitRepo, omittingRange))
+            }
+            expect(result).to.be.false
+          }
+        )
+      }
     }
 
     describe('getData()', function() {
