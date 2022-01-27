@@ -476,6 +476,7 @@ function create(where, opts, cb)
           map[data.name][data.spec] = { version: data.version }
           break
         case 'git':
+          // NOTE: no longer any support for adding legacy-type git records
           if (!map[data.repo]) map[data.repo] = {}
           map[data.repo][data.commit] = copy
           if (data.refs) {
@@ -569,7 +570,8 @@ function create(where, opts, cb)
     switch (type) {
       case 'git':
         if (!name) {
-          data = tables.git[spec] // legacy version data
+          data = tables.git[spec]
+          // legacy version data; only guaranteed field is repoID
           if (data) result = { spec: spec }
         }
         else {
@@ -581,21 +583,21 @@ function create(where, opts, cb)
               ver = getMaxSemverMatch(spec.slice(7), versions, {filter: true})
             if (ver) data = versions[ver]
           }
-          else {
-            // Given that the default branch of a git repo *can* be named
-            // arbitrarily, I'm uncomfortable with this:
-            data = versions['master'] || versions['main']
-            if (!data) {
-              // If there's only one full record for the given repo, use that.
-              const fullRecords = []
-              for (let id in versions)
-                if (versions[id].filename) fullRecords.push(versions[id])
-              if (fullRecords.length === 1) data = fullRecords[0]
+          // Given that the default branch of a git repo *can* be named
+          // arbitrarily, I'm uncomfortable with this:
+          else if (!(data = versions['master'] || versions['main'])) {
+            // If there's only one full record for the given repo, use that.
+            const fullRecords = []
+            for (let id in versions)
+              if (versions[id].filename) fullRecords.push(id)
+            if (fullRecords.length === 1) {
+              data = versions[fullRecords[0]]
+              result = { repo: name, commit: fullRecords[0] }
             }
           }
-          if (data) {
+          if (data && !result) {
             result = { repo: name }
-            if (data.commit) {
+            if (data.commit) { // fetched by tag or semver expr, maybe by '' or '*'
               result.commit = data.commit
               data = versions[data.commit]
               if (spec && spec != '*') result.spec = spec
