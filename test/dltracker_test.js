@@ -386,6 +386,14 @@ describe('DownloadTracker module', function() {
     })
   }
 
+  function mockOneDownload(filename, where, cb) {
+    const tarballPath = path.join(srcDir, filenames[0])
+    const copyPath = path.join(where, filename)
+    ut.copyFile(tarballPath, copyPath, function(err) {
+      return cb(err)
+    })
+  }
+
   describe('Instance methods:', function() {
     before('create tarballs to mock packages to add', function(done) {
       const dummyContentPath = 'test/assets/package'
@@ -782,6 +790,48 @@ describe('DownloadTracker module', function() {
             expect(resultData).to.be.undefined
           }
         )
+
+        // More edge cases - these require adding more git records
+
+        it('should return correct data when queried by git repo without spec when only 1 record exists for that',
+          function(done) {
+            const refData = {
+              repo: 'dark.net/darko/dark-project',
+              commit: 'abcdef0123456789abcdef0123456789abcdef01',
+              filename: 'dark.net%2Fdarko%2Fdark-project%23abcdef0123456789abcdef0123456789abcdef01.tar.gz',
+              extra: 'this was a late addition'
+              // Note there are no refs here.
+            }
+            mockOneDownload(refData.filename, currentTracker.path, function(err) {
+              if (err) return done(err)
+              currentTracker.add('git', refData, function(err) {
+                if (err) return done(err)
+                const extendedRefData = Object.assign({type:'git'}, refData)
+                const resultData = currentTracker.getData('git', refData.repo, '')
+                expect(resultData).to.deep.equal(extendedRefData)
+                done()
+              })
+            })
+          }
+        )
+
+        // TODO: The dreaded Legacy case? Is it worth the time & effort?
+        // There is no support for adding such data in the current version.
+        // It would have to be an existing dltracker.json with the record already present.
+        /*
+        it('should return correct data when queried by a spec without repo when a matching legacy record exists',
+          function(done) {
+            const refData = {
+              spec: 'git://dark.net/darko/mystery.git#3409a96f43958c607856da3b756e247352385bad',
+              repoID: 'archaic-unparseable-dirname-34785439',
+              extra: 'this too was a late addition'
+              // Such a record would actually contain from, cloneURL, treeish, resolvedTreeish
+              // but no checking is in place for those
+            }
+            // Would have to configure the legacy directory here
+          }
+        )
+        */
       }
     }
 
