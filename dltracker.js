@@ -537,9 +537,34 @@ function create(where, opts, cb)
     return preparedData(type, name, spec)
   }
 
+  // This works whether spec is a semver range expression or a specific version
+  function getMaxSemverMatch(spec, versions, opts) {
+    const range = semver.validRange(spec, {loose: true})
+    if (!range) {
+      log.error('DownloadTracker preparedData', 'invalid semver spec:', spec)
+      return null
+    }
+
+    let resultVer = null
+    const vList = Object.keys(versions)
+
+    if (opts && opts.filter) {
+      const vMap = {}
+      const vListClean = vList.map(function(v){ return semver.clean(v) })
+        .filter(function(v, i){ if (v) vMap[v] = vList[i]; return !!v })
+      const ver = semver.maxSatisfying(vListClean, range)
+      if (ver) resultVer = vMap[ver]
+    }
+    else {
+      resultVer = semver.maxSatisfying(vList, range)
+    }
+
+    return resultVer
+  }
+
   function preparedData(type, name, spec) {
     let versions, ver
-    let data, result, prop
+    let data, result
   
     switch (type) {
       case 'git':
@@ -550,48 +575,46 @@ function create(where, opts, cb)
         else {
           versions = tables.git[name]
           if (!versions) break
-          if (spec) {
+          if (spec && spec != '*') {
             ver = spec
-            data = versions[spec]
+            if (spec.indexOf('semver:') === 0)
+              ver = getMaxSemverMatch(spec.slice(7), versions, {filter: true})
+            if (ver) data = versions[ver]
           }
           else {
+            // Given that the default branch of a git repo *can* be named
+            // arbitrarily, I'm uncomfortable with this:
             data = versions['master'] || versions['main']
+            if (!data) {
+              // If there's only one full record for the given repo, use that.
+              const fullRecords = []
+              for (let id in versions)
+                if (versions[id].filename) fullRecords.push(versions[id])
+              if (fullRecords.length === 1) data = fullRecords[0]
+            }
           }
           if (data) {
             result = { repo: name }
             if (data.commit) {
               result.commit = data.commit
               data = versions[data.commit]
-              if (spec) result.spec = spec
+              if (spec && spec != '*') result.spec = spec
             }
             else result.commit = spec
           }
         }
         if (data) {
-          for (prop in data) result[prop] = data[prop]
+          Object.assign(result, data)
         }
         break
       case 'semver':
         versions = tables.semver[name]
         if (!versions) break
-        const range = semver.validRange(spec, {loose: true})
-        if (semver.valid(spec, {loose: true})) {
-          for (ver in versions) {
-            if (semver.eq(ver, spec)) {
-              data = versions[ver]
-              break
-            }
-          }
-        }
-        else if (range !== null) {
-          const vList = Object.keys(versions)
-          ver = semver.maxSatisfying(vList, range)
-          if (ver) data = versions[ver]
-        }
-        else log.error('DownloadTracker.getData', 'invalid semver spec:', spec)
-        if (data) {
+        ver = getMaxSemverMatch(spec, versions)
+        if (ver) {
+          data = versions[ver]
           result = { name: name, version: ver }
-          for (prop in data) result[prop] = data[prop]
+          Object.assign(result, data)
         }
         break
       case 'tag':
@@ -603,7 +626,7 @@ function create(where, opts, cb)
           versions = tables.semver[name]
           if (versions) {
             data = versions[ver]
-            for (prop in data) result[prop] = data[prop]
+            Object.assign(result, data)
           }
         }
         break
@@ -614,7 +637,7 @@ function create(where, opts, cb)
         data = tables.url[spec2]
         if (data) {
           result = { spec: spec }
-          for (prop in data) result[prop] = data[prop]
+          Object.assign(result, data)
         }
         break
     }
