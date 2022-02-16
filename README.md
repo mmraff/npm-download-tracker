@@ -1,4 +1,4 @@
-# npm-package-dl-tracker
+# @offliner/npm-download-tracker
 Package tarball data store manager for the **npm-two-stage** project
 
 ## Overview
@@ -8,39 +8,38 @@ The  purposes of this module are:
 * to provide information to the **offliner** module for installation of downloaded packages
 * to provide a means to validate the information mapped in a dltracker.json file with respect to the download directory that contains it
 
-Where package tarball filenames (and Git repo identifiers) are of concern, this module is meant to be used in tandem with the module **npm-package-filename**.
+Where package tarball filenames (and Git repo identifiers) are of concern, this module is meant to be used in tandem with the module **@offliner/npm-package-filename**.
 
 
 ## Install
 
 ```bash
-npm install npm-package-dl-tracker
+npm install @offliner/npm-download-tracker
 ````
 
 
-## Usage
+## Usage Examples
 
 ```js
-const dltFactory = require('npm-package-dl-tracker')
+const dltFactory = require('@offliner/npm-download-tracker')
 
 // ...
 
-dltFactory.create('path/to/put/tarballs', function(err, tracker) {
-  if (err) return fallback(err)
-  proceedWithTracker(tracker)
+dltFactory.create('path/to/put/tarballs').then(tracker => {
+  if (!tracker.contains('semver', packageName, spec))
+    doSomethingWith(tracker)
 })
 
 // ...
 
 const inData = {
-  name: pkgName,
-  version: pkgVer,
+  name: packageName,
+  version: packageVer,
   filename: uniqueFilename,
   // whatever else is useful...
 }
-tracker.add('semver', inData, function(err) {
-  if (err) return fallback(err)
-  next()
+tracker.add('semver', inData).then(() => {
+  goToNextAction()
 })
 
 tracker.contains('semver', pkgName, pkgVer) // --> true
@@ -54,8 +53,7 @@ const outData = tracker.getData('semver', pkgName, pkgVer)
 
 // ...
 
-tracker.serialize(function(err) {
-  if (err) return abort(err)
+tracker.serialize().then(() => {
   finishUp()
 }
 ```
@@ -66,38 +64,35 @@ tracker.serialize(function(err) {
 ### `dltFactory.typeMap`
 A hash of `npm-package-arg` package types to `npm-package-dl-tracker` package types.
 ```js
-dltFactory.typeMap['version'] // --> 'semver'
-dltFactory.typeMap['tag']     // --> 'tag'
-dltFactory.typeMap['git']     // --> 'git'
-dltFactory.typeMap['remote']  // --> 'url'
-dltFactory.typeMap['file']    // --> undefined
+dltFactory.typeMap['version']   // --> 'semver'
+dltFactory.typeMap['tag']       // --> 'tag'
+dltFactory.typeMap['git']       // --> 'git'
+dltFactory.typeMap['remote']    // --> 'url'
+dltFactory.typeMap['directory'] // --> undefined
+dltFactory.typeMap['file']      // --> undefined
 ```
 
 A value from this mapping is to be used as the first argument to instance methods `add()`, `contains()`, and `getData()`.
 
 Only the ones that are meaningful in this context are defined.
 
-### `dltFactory.create(where, [options,] cb)`
-Factory function to instantiate a tracker instance.
+### `dltFactory.create(where[, options])` &rarr; `Promise<trackerInstance>`
+Factory function to create a tracker instance.
 * `where` {string || `undefined` || `null`} Path to put/find tarballs
 
-  If empty value is given, the current directory will be used.
+  If no argument or empty value is given, the current directory will be used.
 
 * `options` {object || `undefined` || `null`} *Optional*
   * `log` {object} *Optional*
 
   If `log` option present, must have these methods: `error`, `warn`, `info`, `verbose`
 
-* `cb` {function} Callback
-  * `error` {Error || `null`}
-  * `tracker` {object} New download-tracker instance, if no error
-
 ## Instance API
 
 ### `tracker.path`
 {string} The absolute path adopted by this instance for location of tarballs
 
-### `tracker.add(type, data, cb)`
+### `tracker.add(type, data)` &rarr; `Promise<empty>`
 * `type` {string} One of the values from **`dltFactory.typeMap`** (see above)
 * `data` {object} Contains fields to associate with a given tarball.
   Arbitrary extra fields may be included with required fields.
@@ -122,9 +117,6 @@ Factory function to instantiate a tracker instance.
   For `type` `'url'`, required fields are:
   * `spec` {string} A remote URL
   * `filename` {string} The name of the tarball file
-
-* `cb` {function} Callback
-  * `error` {Error || `undefined`}
 
 ### `tracker.contains(type, name, spec)`
 *Synchronous*
@@ -165,45 +157,59 @@ Same argument requirements as for `contains()`.
 
 ***Caveat:*** For `type` `'tag'`, if the value of `spec` is `'latest'` or `''`, the call will return the data of the highest version added, which is not necessarily the current latest version.
 
-### `tracker.serialize(cb)`
-Writes the current modified state to a file named dltracker.json in the adopted directory (**`tracker.path`**).
-Does nothing if there has not been a call to **`tracker.add()`** since instantiation or since the last call to **`tracker.serialize()`**.
-* `cb` {function} Callback
-  * `error` {Error || `undefined`}
+### `tracker.serialize()` &rarr; `Promise<boolean>`
+If `tracker.add()` has previously been called successfully since instantiation/last call to `serialize()`, writes the modified state to a file named dltracker.json in the adopted directory (**`tracker.path`**), and resolves to `true`.
+Otherwise, does nothing, and resolves to `false`.
 
-### `tracker.audit(cb)`
+### `tracker.audit()` &rarr; `Promise<Array>`
 Runs checks on the items in the current data, including the condition of each file.
-* `cb` {function} Callback
-  * `error` {Error || `null`}
-  * `list` {Array} A list of objects describing problems discovered in the current tracker data, if any:
-    * `data` {object} The same data as returned by `tracker.getData()`
-    * `error` {Error} The error encountered for the package identified by `data`
+Resolves to an Array of objects describing problems discovered in the current tracker data, if any; otherwise an empty Array.
+Each element object contains the following fields:
+* `data` {object} The same data as returned by `tracker.getData()`
+* `error` {Error} The error encountered for the package identified by `data`
 
-
+------
 ## Submodule API: `reconstruct-map.js`
 Primary purpose is to recreate the tracker data structure for a directory of packages that has no JSON file, though it can also be used without harm even if there is a dltracker.json file in the directory.
 ```js
-const reconstructMap = require('npm-package-dl-tracker/reconstruct-map')
+const reconstructMap = require('@offliner/npm-download-tracker/reconstruct-map')
 
 // ...
 
-reconstructMap('path/to/tarballs', function(err, map) {
-  if (err) return handleError(err)
+reconstructMap('path/to/tarballs').then(map => {
   handleTrackerMap(map)
 })
 
 ```
-### `reconstructMap(dir, [log,] cb)`
+### `reconstructMap(dir[, log])` &rarr; `Promise<object>`
 * `dir` {string} Path to find tarballs
 * `log` {object || `undefined` || `null`} *Optional*
 
   If given, must have these methods: `error`, `warn`, `info`, `verbose`
 
-* `cb` {function} Callback
-  * `error` {Error || null}
-  * `map` {object}
+The resolved object contains a tree structure, in which the possible topmost fields are `semver`, `git`, and `url`.
+When any of these is present, package key values map down to the bare minimum of data for every package tarball (that has a parseable name) found in the given directory.
 
-  The result object contains a tree structure with the bare minimum of data for every package tarball (with a parseable name) found in the given directory.
+```
+<object>
+    |
+    |------------------------------------------ 'git'
+    |                                             |
+    |-- 'semver'                                  |-- <repoIdentifier1>
+    |       |                                     |           |
+    |       |-- <packageName1>                    |           |-- <commitHashA>: <data>
+    |       |         |                           |           |
+    |       |         |-- <versionA>: <data>      |           ...
+    |       |         |                           ...
+    |       |         ...
+    |       ...
+    |
+    |-- 'url'
+    |     |
+    |     |-- <URL>: <data>
+    |     |  
+    |     ...
+```
 
 ------
 
