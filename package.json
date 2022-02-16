@@ -1,6 +1,6 @@
 {
-  "name": "npm-package-dl-tracker",
-  "version": "1.1.1",
+  "name": "@offliner/npm-download-tracker",
+  "version": "2.0.0",
   "description": "Package tarball data store manager for the npm-two-stage project",
   "license": "Artistic-2.0",
   "author": {
@@ -15,6 +15,9 @@
   "bugs": {
     "url": "https://github.com/mmraff/npm-download-tracker/issues"
   },
+  "engines": {
+    "node": ">=8.5.0"
+  },
   "main": "dltracker.js",
   "files": [
     "reconstruct-map.js"
@@ -26,13 +29,15 @@
   },
   "devDependencies": {
     "chai": "^4.3.4",
-    "mkdirp": "~0.5.1",
     "mocha": "^7.2.0",
     "rimraf": "^2.6.3",
     "tar": "^4.4.13"
   },
   "scripts": {
     "test": "mocha"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "npm",

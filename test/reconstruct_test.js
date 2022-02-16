@@ -1,21 +1,19 @@
 const path = require('path')
+const promisify = require('util').promisify
 
 const expect = require('chai').expect
 const fs = require('graceful-fs')
+const mkdirAsync = promisify(fs.mkdir)
 const npf = require('npm-package-filename')
 const rimraf = require('rimraf')
+const rimrafAsync = promisify(rimraf)
 
 const ut = require('./lib/utilities')
 const reconstructMap = require('../reconstruct-map')
 
-function shouldNotRunFunc(err, data) {
-  throw new Error('This dummy function should never get called!')
-}
-function nopFunc() {}
-
+const didNotRejectError = new Error("Failed to reject")
 const emptyArgs = [ undefined, null, '' ]
 const notStringArgs = [ 42, true, {}, [] ]
-const notFunctions = [ 42, true, 'example', {}, [] ]
 const tempDir = 'test/assets/dir3'
 const filenames = Object.values(ut.tarballNames)
 const notPackageFilename = 'ThisDoesNotLookLikeAPackage.tgz'
@@ -23,89 +21,102 @@ filenames.push(notPackageFilename)
 
 describe('reconstructMap module', function() {
   before('make clean temp directory and populate', function(done) {
-    const filepaths = filenames.map(function(name) {
-      return path.join(tempDir, name)
-    })
-    function nextFile(i) {
+    const filepaths = filenames.map(name => path.join(tempDir, name))
+    function iterateFiles(i) {
       if (i >= filepaths.length) return done()
       fs.writeFile(filepaths[i], '', function(err) {
         if (err) return done(err)
-        nextFile(++i)
+        iterateFiles(++i)
       })
     }
-    ut.makeCleanDir(tempDir, function(){ nextFile(0) }, done)
+    rimrafAsync(tempDir).then(() => mkdirAsync(tempDir))
+    .then(() => iterateFiles(0))
   })
   after('remove temporary test assets', function(done) {
     rimraf(tempDir, done)
   })
 
-  it('should throw if empty value given for path', function() {
-    expect(function() { reconstructMap() }).to.throw(SyntaxError)
-    for (let i = 0; i < emptyArgs.length; ++i)
-      expect(function() {
-        reconstructMap(emptyArgs[i], shouldNotRunFunc)
-      }).to.throw(SyntaxError)
+  it('should reject if empty value given for path', function(done) {
+    reconstructMap().then(() => { throw didNotRejectError })
+    .catch(err => {
+      expect(err).to.be.an.instanceOf(SyntaxError)
+    })
+    .then(() => {
+      function iterateEmptyArgs(i) {
+        if (i >= emptyArgs.length) return Promise.resolve(null)
+        return reconstructMap(emptyArgs[i])
+        .then(() => { throw didNotRejectError })
+        .catch(err => {
+          expect(err).to.be.an.instanceOf(SyntaxError)
+          return iterateEmptyArgs(i+1)
+        })
+      }
+
+      return iterateEmptyArgs(0).then(() => done())
+    })
+    .catch(err => done(err))
   })
 
-  it('should throw if path value is not a string', function() {
-    for (let i = 0; i < notStringArgs.length; ++i)
-      expect(function() {
-        reconstructMap(notStringArgs[i], shouldNotRunFunc)
-      }).to.throw(TypeError)
-  })
-
-  it('should throw if no callback given', function() {
-    expect(function() { reconstructMap(tempDir) }).to.throw(SyntaxError)
-  })
-
-  it('should throw if callback value is not a function', function() {
-    for (let i = 0; i < notFunctions.length; ++i) {
-      expect(function() {
-        reconstructMap(tempDir, notFunctions[i])
-      }).to.throw(TypeError)
-      expect(function() {
-        reconstructMap(tempDir, {}, notFunctions[i])
-      }).to.throw(TypeError)
+  it('should reject if path value is not a string', function(done) {
+    function iterateNonStringArgs(i) {
+      if (i >= notStringArgs.length) return Promise.resolve(null)
+      return reconstructMap(notStringArgs[i])
+      .then(() => { throw didNotRejectError })
+      .catch(err => {
+        expect(err).to.be.an.instanceOf(TypeError)
+        return iterateNonStringArgs(i+1)
+      })
     }
+
+    iterateNonStringArgs(0).then(() => done())
+    .catch(err => done(err))
   })
 
-  it('should throw when given invalid values for logger', function() {
+  it('should reject when given invalid values for logger', function(done) {
+    function nopFunc() {}
     const notObjects = [ 42, true, 'example' ]
-    for (i = 0; i < notObjects.length; ++i) {
-      expect(function() {
-        reconstructMap(tempDir, notObjects[i], shouldNotRunFunc)
-      }).to.throw(TypeError)
+    const notLoggers = [
+      {},
+      { error: nopFunc, warn: nopFunc, info: nopFunc }, // missing 'verbose'
+      { error: "SURPRISE", warn: nopFunc, info: nopFunc, verbose: nopFunc }
+    ]
+
+    function iterateNonObjects(i) {
+      if (i >= notObjects.length) return Promise.resolve(null)
+      return reconstructMap(tempDir, notObjects[i])
+      .then(() => { throw didNotRejectError })
+      .catch(err => {
+        expect(err).to.be.an.instanceOf(TypeError)
+        return iterateNonObjects(i+1)
+      })
     }
 
-    let notLogger = {}
-    expect(function() {
-      reconstructMap(tempDir, notLogger, shouldNotRunFunc)
-    }).to.throw(Error)
-
-    notLogger = { 
-      error: nopFunc, warn: nopFunc, info: nopFunc // missing 'verbose'
+    function iterateNonLoggers(i) {
+      if (i >= notLoggers.length) return Promise.resolve(null)
+      return reconstructMap(tempDir, notLoggers[i])
+      .then(() => { throw didNotRejectError })
+      .catch(err => {
+        expect(err).to.be.an.instanceOf(TypeError)
+        return iterateNonObjects(i+1)
+      })
     }
-    expect(function() {
-      reconstructMap(tempDir, notLogger, shouldNotRunFunc)
-    }).to.throw(Error)
 
-    notLogger.verbose = nopFunc  // correct the last problem
-    notLogger.error = "SURPRISE" // but introduce another
-    expect(function() {
-      reconstructMap(tempDir, notLogger, shouldNotRunFunc)
-    }).to.throw(TypeError)
+    iterateNonObjects(0)
+    .then(() => iterateNonLoggers(0))
+    .then(() => done())
+    .catch(err => done(err))
   })
 
   let currMap = null
 
-  it('should pass back a plain object when given an existing directory', function(done) {
-    reconstructMap(tempDir, function(err, map) {
-      if (err) return done(err)
+  it('should resolve to a plain object when given an existing directory', function(done) {
+    reconstructMap(tempDir).then(map => {
       expect(map).to.be.an('object')
       expect(Object.getPrototypeOf(map)).to.equal(Object.getPrototypeOf({}))
       currMap = map
       done()
     })
+    .catch(err => done(err))
   })
 
   it('the object should contain all expected data and nothing more', function() {
