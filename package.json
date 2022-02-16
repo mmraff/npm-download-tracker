@@ -23,8 +23,8 @@
     "reconstruct-map.js"
   ],
   "dependencies": {
+    "@offliner/npm-package-filename": "^1.1.0",
     "graceful-fs": "^4.2.3",
-    "npm-package-filename": "^1.0.0",
     "semver": "^5.7"
   },
   "devDependencies": {

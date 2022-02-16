@@ -1,6 +1,6 @@
 const promisify = require('util').promisify
 const readdirAsync = promisify(require('graceful-fs').readdir)
-const npf = require('npm-package-filename')
+const npf = require('@offliner/npm-package-filename')
 
 module.exports = reconstructMap
 

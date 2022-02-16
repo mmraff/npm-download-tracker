@@ -4,7 +4,7 @@ const promisify = require('util').promisify
 const expect = require('chai').expect
 const fs = require('graceful-fs')
 const mkdirAsync = promisify(fs.mkdir)
-const npf = require('npm-package-filename')
+const npf = require('@offliner/npm-package-filename')
 const rimraf = require('rimraf')
 const rimrafAsync = promisify(rimraf)
 
