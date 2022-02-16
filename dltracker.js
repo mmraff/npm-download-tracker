@@ -6,7 +6,7 @@ const promisify = require('util').promisify
 // 3rd party dependencies
 const fs = require('graceful-fs')
 const semver = require('semver')
-const npf = require('npm-package-filename')
+const npf = require('@offliner/npm-package-filename')
 
 const reconstructMap = require('./reconstruct-map')
 
@@ -37,7 +37,6 @@ const KEYFIELDS = new Set([ // internal
   'type', 'name', 'version', 'spec', 'repo', 'commit'
 ])
 
-const GIT_REPOS_ROOT = '_git-remotes'
 const RE_HEX40 = /^[a-f0-9]{40}$/ // git commit hash pattern
 const MAPFILE_NAME = 'dltracker.json'
 const MAPFILE_DESC_FIELD = [
@@ -52,23 +51,6 @@ const MAPFILE_DESC_FIELD = [
 function auditOne(type, data, dir) {
   let fileSpec = data.filename
   if (!fileSpec) {
-    if (type === 'git') {
-      // In the legacy version of dltracker, it's not a tarball that gets saved,
-      // but a cloned repo with an ad-hoc directory name (--> repoID).
-      if (!data.repoID) {
-        const err = new Error('No filename or repoID in data')
-        err.code = 'ENODATA'
-        return Promise.reject(err)
-      }
-      fileSpec = path.join(GIT_REPOS_ROOT, data.repoID)
-      return lstatAsync(path.join(dir, fileSpec)).then(stats => {
-        if (!stats.isDirectory()) {
-          err = new Error('Git repo path exists but is not a directory')
-          err.code = 'ENOTDIR'
-          throw err
-        }
-      })
-    } // else,
     const err = new Error('No filename in data')
     err.code = 'ENODATA'
     return Promise.reject(err)
@@ -185,11 +167,14 @@ function expectPackageData(type, data) {
   }
 }
 
-// TODO: change this description
 // Factory
 // Can be called in any of the following forms:
-//   create(undefined||null||''||where, cb)
-//   create(undefined||null||''||where, undefined||null||opts, cb)
+//   create()
+//   create(undefined) || create(null) || create('')
+//   create(where)
+//   create(<undefined||null||''||where>, undefined)
+//   create(<undefined||null||''||where>, null)
+//   create(<undefined||null||''||where>, opts)
 function create(where, opts) {
   try {
     if (where !== undefined && where !== null) {
@@ -503,12 +488,10 @@ function create(where, opts) {
         expectNonemptyString(name, 'name')
         break
       case 'git':
-        // Allowable: empty name arg to retrieve legacy git data by spec alone;
-        // else it must be the name of the repo
-        if (name !== undefined && name !== null && typeof name !== 'string')
-          throw new TypeError('git repo name must be given as a string')
+        expectNonemptyString(name, 'git repo name')
         break
       case 'url':
+        // I'm on the fence about this. It's not used, so why should it matter?
         if (name !== undefined && name !== null && name !== '')
           throw new SyntaxError('name value must be empty for type url')
         break
@@ -560,41 +543,34 @@ function create(where, opts) {
   
     switch (type) {
       case 'git':
-        if (!name) {
-          data = tables.git[spec]
-          // legacy version data; only guaranteed field is repoID
-          if (data) result = { spec: spec }
+        versions = tables.git[name]
+        if (!versions) break
+        if (spec && spec != '*') {
+          ver = spec
+          if (spec.indexOf('semver:') === 0)
+            ver = getMaxSemverMatch(spec.slice(7), versions, {filter: true})
+          if (ver) data = versions[ver]
         }
-        else {
-          versions = tables.git[name]
-          if (!versions) break
-          if (spec && spec != '*') {
-            ver = spec
-            if (spec.indexOf('semver:') === 0)
-              ver = getMaxSemverMatch(spec.slice(7), versions, {filter: true})
-            if (ver) data = versions[ver]
+        // Given that the default branch of a git repo *can* be named
+        // arbitrarily, I'm uncomfortable with this:
+        else if (!(data = versions['master'] || versions['main'])) {
+          // If there's only one full record for the given repo, use that.
+          const fullRecords = []
+          for (let id in versions)
+            if (versions[id].filename) fullRecords.push(id)
+          if (fullRecords.length === 1) {
+            data = versions[fullRecords[0]]
+            result = { repo: name, commit: fullRecords[0] }
           }
-          // Given that the default branch of a git repo *can* be named
-          // arbitrarily, I'm uncomfortable with this:
-          else if (!(data = versions['master'] || versions['main'])) {
-            // If there's only one full record for the given repo, use that.
-            const fullRecords = []
-            for (let id in versions)
-              if (versions[id].filename) fullRecords.push(id)
-            if (fullRecords.length === 1) {
-              data = versions[fullRecords[0]]
-              result = { repo: name, commit: fullRecords[0] }
-            }
+        }
+        if (data && !result) {
+          result = { repo: name }
+          if (data.commit) { // fetched by tag or semver expr, maybe by '' or '*'
+            result.commit = data.commit
+            data = versions[data.commit]
+            if (spec && spec != '*') result.spec = spec
           }
-          if (data && !result) {
-            result = { repo: name }
-            if (data.commit) { // fetched by tag or semver expr, maybe by '' or '*'
-              result.commit = data.commit
-              data = versions[data.commit]
-              if (spec && spec != '*') result.spec = spec
-            }
-            else result.commit = spec
-          }
+          else result.commit = spec
         }
         if (data) {
           Object.assign(result, data)
@@ -676,4 +652,3 @@ function create(where, opts) {
     })
   }
 }
-
