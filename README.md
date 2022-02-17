@@ -1,4 +1,4 @@
-# @offliner/npm-download-tracker
+# @offliner/npm-downloadtracker
 Package tarball data store manager for the **npm-two-stage** project
 
 ## Overview
@@ -14,14 +14,14 @@ Where package tarball filenames (and Git repo identifiers) are of concern, this 
 ## Install
 
 ```bash
-npm install @offliner/npm-download-tracker
+npm install @offliner/npm-downloadtracker
 ````
 
 
 ## Usage Examples
 
 ```js
-const dltFactory = require('@offliner/npm-download-tracker')
+const dltFactory = require('@offliner/npm-downloadtracker')
 
 // ...
 
@@ -172,7 +172,7 @@ Each element object contains the following fields:
 ## Submodule API: `reconstruct-map.js`
 Primary purpose is to recreate the tracker data structure for a directory of packages that has no JSON file, though it can also be used without harm even if there is a dltracker.json file in the directory.
 ```js
-const reconstructMap = require('@offliner/npm-download-tracker/reconstruct-map')
+const reconstructMap = require('@offliner/npm-downloadtracker/reconstruct-map')
 
 // ...
 

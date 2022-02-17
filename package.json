@@ -1,5 +1,5 @@
 {
-  "name": "@offliner/npm-download-tracker",
+  "name": "@offliner/npm-downloadtracker",
   "version": "2.0.0",
   "description": "Package tarball data store manager for the npm-two-stage project",
   "license": "Artistic-2.0",
